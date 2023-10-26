@@ -4,27 +4,28 @@ import (
 	"fmt"
 	"log"
 	"net/rpc"
+
+	"github.com/sutd_gfs_project/models"
 )
 
-func Tester() {
-	client, err := rpc.Dial("tcp", "localhost:8080")
+// Testing get chunk location request
+func Test() {
+	client, err := rpc.Dial("tcp", "localhost:8080") // Replace with your master node's address
 	if err != nil {
-		log.Fatal("Dialing:", err)
+		log.Fatal("Error connecting to RPC server:", err)
 	}
 	defer client.Close()
 
-	// Path to your example.txt file.
-	filePath := "example.txt"
+	args := models.GetChunkLocationArgs{
+		Filename:   "file1.txt",
+		ChunkIndex: 1,
+	}
+	var reply models.ChunkMetadata
 
-	var reply bool
-	err = client.Call("MasterNode.CreateChunks", filePath, &reply)
+	err = client.Call("MasterNode.GetChunkLocation", args, &reply)
 	if err != nil {
-		log.Fatal("RPC error:", err)
+		log.Fatal("Error calling RPC method: ", err)
 	}
 
-	if reply {
-		fmt.Println("CreateChunks RPC method successfully executed.")
-	} else {
-		fmt.Println("CreateChunks RPC method failed.")
-	}
+	fmt.Printf("Handle: %s, Location: %s\n", reply.Handle, reply.Location)
 }

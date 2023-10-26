@@ -1,69 +1,59 @@
 package main
 
 import (
-	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"net/rpc"
 	"os"
 	"strconv"
+	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/sutd_gfs_project/helper"
+	"github.com/sutd_gfs_project/models"
 )
 
-type MasterNode struct{}
+var clientAddr string
 
-var chunkServers map[string]bool
+type MasterNode struct {
+	ChunkInfo map[string]map[int]models.ChunkMetadata
+	Chunks    sync.Map
+	Mu        sync.Mutex
+}
 
-func (mn *MasterNode) CreateChunks(filePath string, reply *bool) error {
-	// Open the input file for reading.
-	inputFile, err := os.Open(filePath)
-	if err != nil {
-		log.Printf("Error opening input file: %v", err)
-		return err
-	}
-	defer inputFile.Close()
+func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *models.ChunkMetadata) error {
+	key := args.Filename + "_" + strconv.Itoa(args.ChunkIndex)
 
-	// Create a directory for storing chunks if it doesn't exist.
-	err = os.MkdirAll("chunks", 0755)
-	if err != nil {
-		log.Printf("Error creating chunks directory: %v", err)
-		return err
+	// Loads the filename + chunk index to load metadata from key
+	value, ok := mn.Chunks.Load(key)
+	if !ok {
+		return helper.ErrChunkNotFound
 	}
 
-	// Read the input file and create chunks.
-	scanner := bufio.NewScanner(inputFile)
-	chunkNumber := 1
-
-	for scanner.Scan() {
-		chunkFileName := "chunks/chunk" + strconv.Itoa(chunkNumber) + ".txt"
-		chunkFile, err := os.Create(chunkFileName)
-		if err != nil {
-			log.Printf("Error creating chunk file: %v", err)
-			return err
-		}
-		defer chunkFile.Close()
-
-		// Write a line from the input file to the chunk file.
-		chunkFile.WriteString(scanner.Text() + "\n")
-
-		chunkNumber++
+	chunkMetadata, ok := value.(models.ChunkMetadata)
+	if !ok {
+		return helper.ErrInvalidMetaData
 	}
 
-	if scanner.Err() != nil {
-		log.Printf("Error reading input file: %v", scanner.Err())
-		return scanner.Err()
-	}
+	*reply = chunkMetadata
 
-	log.Printf("Created %d chunks from %s", chunkNumber-1, filePath)
-	*reply = true
 	return nil
 }
 
-func (mn *MasterNode) RegisterChunkServer(chunkServerAddress string, reply *bool) error {
-	// Add the chunk server to the list of active servers.
-	chunkServers[chunkServerAddress] = true
-	*reply = true
+// Somehow the client address port keeps on changing, or maybe unless i change it? To instead just post the a static string
+func (mn *MasterNode) HeartBeatManager() error {
+	mn.Mu.Lock()
+	defer mn.Mu.Unlock()
+	client, ok := helper.Clients[clientAddr]
+	if !ok {
+		return helper.ErrNotRegistered
+	}
+	client.Mu.Lock()
+	defer client.Mu.Unlock()
+	client.LastHeartbeat = time.Now()
+	client.Status = "alive"
 	return nil
 }
 
@@ -75,10 +65,10 @@ func main() {
 	defer logfile.Close()
 	log.SetOutput(logfile)
 
-	myService := new(MasterNode)
-	rpc.Register(myService)
+	gfsMasterNode := new(MasterNode)
+	gfsMasterNode.InitializeChunkInfo()
+	rpc.Register(gfsMasterNode)
 
-	// Create a listener for the RPC server.
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
 		log.Fatal("Error starting RPC server:", err)
@@ -93,6 +83,50 @@ func main() {
 			log.Printf("Error accepting connection: %v", err)
 			continue
 		}
+
+		// Not too sure how I am going to ensure client address stays the same haiz
+		clientAddr = conn.RemoteAddr().String()
+		fmt.Println("Client Address: ", clientAddr)
+		gfsMasterNode.Mu.Lock()
+		helper.Clients[clientAddr] = &models.ClientInfo{
+			LastHeartbeat: time.Now(),
+			Status:        "alive",
+		}
+		gfsMasterNode.Mu.Unlock()
+
 		go rpc.ServeConn(conn)
 	}
+}
+
+/* ============================================ INITIALISING DATA  ===========================================*/
+
+func (mn *MasterNode) InitializeChunkInfo() {
+	// Handle is the uuid of the metadata that has been assigned to the chunk
+	// Location is the chunkServer that it is located in
+	metadata1 := models.ChunkMetadata{
+		Handle:   uuid.New(),
+		Location: 1,
+	}
+
+	// The reason why it has a underscore 0 in its naming is to indicate the chunk index.
+	// Thus if file1.txt_0. It is the first chunk of file1.txt
+	mn.Chunks.Store("file1.txt_0", metadata1)
+
+	metadata2 := models.ChunkMetadata{
+		Handle:   uuid.New(),
+		Location: 2,
+	}
+	mn.Chunks.Store("file1.txt_1", metadata2)
+
+	metadata3 := models.ChunkMetadata{
+		Handle:   uuid.New(),
+		Location: 1,
+	}
+	mn.Chunks.Store("file2.txt_1", metadata3)
+
+	metadata4 := models.ChunkMetadata{
+		Handle:   uuid.New(),
+		Location: 1,
+	}
+	mn.Chunks.Store("file2.txt_2", metadata4)
 }
