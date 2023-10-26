@@ -1,14 +1,43 @@
-package chunks
+package chunkserver
 
 type ChunkMetadata struct {
 	chunkHandle   int
 	chunkLocation []byte
 }
 
-type ChunkServer struct {
-	// assume we create a ChunkServer instance
+type Chunk struct {
+	// assume this is the data structure for chunks
 	metadata ChunkMetadata
+	data     string
 }
+
+// assume this is for a ChunkServer instance
+type ChunkServer struct {
+	// assume everything stored in database within ChunkServer
+	database []Chunk
+}
+
+/* ---------------------------------Chunk functions-------------------------------- */
+
+// get chunk from database
+func getChunk(chunk Chunk) Chunk {
+	var chunkRetrieved Chunk
+	// add for-loop logic here
+	// ...
+	return chunkRetrieved
+}
+
+// add new chunk to database
+func addChunk(chunk Chunk) {
+
+}
+
+// remove chunk from database
+func removeChunk(chunk Chunk) {
+
+}
+
+/* -----------------------------ChunkServer functions------------------------------ */
 
 // chunk server to send heartbeat to master to check if its alive
 func (cs *ChunkServer) sendHeartBeat() {
