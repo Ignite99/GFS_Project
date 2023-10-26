@@ -1,5 +1,12 @@
 package chunkserver
 
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+)
+
 type ChunkMetadata struct {
 	chunkHandle   int
 	chunkLocation []byte
@@ -20,21 +27,49 @@ type ChunkServer struct {
 /* ---------------------------------Chunk functions-------------------------------- */
 
 // get chunk from database
-func getChunk(chunk Chunk) Chunk {
+func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
 	var chunkRetrieved Chunk
-	// add for-loop logic here
-	// ...
+	// loop through database of ChunkServer
+	for _, val := range cs.database {
+		// find chunk in database with the same chunkHandle
+		if val.metadata.chunkHandle == chunkHandle {
+			chunkRetrieved = val
+			break
+		}
+	}
 	return chunkRetrieved
 }
 
 // add new chunk to database
-func addChunk(chunk Chunk) {
-
+func (cs *ChunkServer) addChunk(newChunk Chunk) Chunk {
+	cs.database = append(cs.database, newChunk)
+	return newChunk
 }
 
-// remove chunk from database
-func removeChunk(chunk Chunk) {
+// update value of chunk in database
+func (cs *ChunkServer) updateChunk(chunk Chunk) Chunk {
+	var updatedChunk Chunk
+	for idx, val := range cs.database {
+		if val.metadata.chunkHandle == chunk.metadata.chunkHandle {
+			cs.database[idx] = chunk
+			updatedChunk = cs.database[idx]
+			break
+		}
+	}
+	return updatedChunk
+}
 
+// delete chunk from database
+func (cs *ChunkServer) deleteChunk(chunk Chunk) Chunk {
+	var deletedChunk Chunk
+	for idx, val := range cs.database {
+		if val.metadata.chunkHandle == chunk.metadata.chunkHandle {
+			cs.database = append(cs.database[:idx], cs.database[:idx+1]...)
+			deletedChunk = chunk
+			break
+		}
+	}
+	return deletedChunk
 }
 
 /* -----------------------------ChunkServer functions------------------------------ */
@@ -74,12 +109,30 @@ func (cs *ChunkServer) receiveLease() {
 
 }
 
+// start RPC server for chunk server (refer to Go's RPC documentation for more details)
+func startRPC() {
+	rpc.HandleHTTP()
+
+	listener, err := net.Listen("tcp", "localhost:8080")
+
+	if err != nil {
+		log.Fatal("Listener error", err)
+	}
+
+	log.Printf("Serving RPC on port %d", 8080)
+	err = http.Serve(listener, nil)
+
+	if err != nil {
+		log.Fatal("Error serving", err)
+	}
+}
+
 // command to run chunk server
 func runChunkServer() {
-
+	startRPC()
 }
 
 // starting function for this file
 func main() {
-
+	runChunkServer()
 }
