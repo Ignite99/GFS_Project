@@ -7,15 +7,14 @@ import (
 	"net/rpc"
 )
 
-type ChunkMetadata struct {
-	chunkHandle   int
-	chunkLocation []byte
-}
+// data structure used for this GFS operation
+// an Object is split into several Chunks
+type Object []int
 
+// each Chunk can be referred by its chunkHandle
 type Chunk struct {
-	// assume this is the data structure for chunks
-	metadata ChunkMetadata
-	data     string
+	chunkHandle int
+	data        []int
 }
 
 // assume this is for a ChunkServer instance
@@ -24,7 +23,12 @@ type ChunkServer struct {
 	database []Chunk
 }
 
+// used for API calls in RPC (refer to: https://steemit.com/utopian-io/@tensor/building-a-basic-rpc-server-and-client-with-go)
+type API int
+
+/* -------------------------------------------------------------------------------- */
 /* ---------------------------------Chunk functions-------------------------------- */
+/* -------------------------------------------------------------------------------- */
 
 // get chunk from database
 func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
@@ -32,7 +36,7 @@ func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
 	// loop through database of ChunkServer
 	for _, val := range cs.database {
 		// find chunk in database with the same chunkHandle
-		if val.metadata.chunkHandle == chunkHandle {
+		if val.chunkHandle == chunkHandle {
 			chunkRetrieved = val
 			break
 		}
@@ -50,7 +54,7 @@ func (cs *ChunkServer) addChunk(newChunk Chunk) Chunk {
 func (cs *ChunkServer) updateChunk(chunk Chunk) Chunk {
 	var updatedChunk Chunk
 	for idx, val := range cs.database {
-		if val.metadata.chunkHandle == chunk.metadata.chunkHandle {
+		if val.chunkHandle == chunk.chunkHandle {
 			cs.database[idx] = chunk
 			updatedChunk = cs.database[idx]
 			break
@@ -63,7 +67,7 @@ func (cs *ChunkServer) updateChunk(chunk Chunk) Chunk {
 func (cs *ChunkServer) deleteChunk(chunk Chunk) Chunk {
 	var deletedChunk Chunk
 	for idx, val := range cs.database {
-		if val.metadata.chunkHandle == chunk.metadata.chunkHandle {
+		if val.chunkHandle == chunk.chunkHandle {
 			cs.database = append(cs.database[:idx], cs.database[:idx+1]...)
 			deletedChunk = chunk
 			break
@@ -72,26 +76,31 @@ func (cs *ChunkServer) deleteChunk(chunk Chunk) Chunk {
 	return deletedChunk
 }
 
+/* -------------------------------------------------------------------------------- */
 /* -----------------------------ChunkServer functions------------------------------ */
+/* -------------------------------------------------------------------------------- */
 
 // chunk server to send heartbeat to master to check if its alive
 func (cs *ChunkServer) sendHeartBeat() {
 
 }
 
-// client to call this when it wants to write data
-func (cs *ChunkServer) writeData() {
-
+// client to call this API when it wants to read data
+func (a *API) read(chunkHandle int, reply *Chunk) error {
+	// will add more logic here
+	return nil
 }
 
-// client to call this when it wants to read data
-func (cs *ChunkServer) readData() {
-
+// client to call this API when it wants to append data
+func (a *API) append(chunkHandle int, reply *Chunk) error {
+	// will add more logic here
+	return nil
 }
 
-// client to call this when it wants to append data
-func (cs *ChunkServer) append() {
-
+// client to call this API when it wants to truncate data
+func (a *API) truncate(chunkHandle int, reply *Chunk) error {
+	// will add more logic here
+	return nil
 }
 
 // master to call this when it needs to create new replica for a chunk
@@ -127,12 +136,19 @@ func startRPC() {
 	}
 }
 
-// command to run chunk server
-func runChunkServer() {
-	startRPC()
+// function to run a ChunkServer instance
+func (cs *ChunkServer) run() {
+
 }
 
-// starting function for this file
+// command or API call for MAIN function to run chunk server
+func runChunkServer() {
+	startRPC()
+	chunkServerInstance := ChunkServer{}
+	chunkServerInstance.run()
+}
+
+// starting function for this file --> will be moved to main.go
 func main() {
 	runChunkServer()
 }
