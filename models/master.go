@@ -16,7 +16,7 @@ type ChunkMetadata struct {
 	Location int
 }
 
-type ChunkServerInfo struct {
+type ChunkServerState struct {
 	LastHeartbeat time.Time
 	Status        string
 }

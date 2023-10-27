@@ -53,11 +53,11 @@ func (mn *MasterNode) HeartBeatManager() {
 	}
 	defer client.Close()
 
-	heartBeatRequest := models.ChunkServerInfo{
+	heartBeatRequest := models.ChunkServerState{
 		LastHeartbeat: time.Now(),
 		Status:        "alive",
 	}
-	var reply models.ChunkServerInfo
+	var reply models.ChunkServerState
 	log.Println("Send heartbeat request to chunk")
 	client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
 	log.Println("Received heartbeat reply from Chunk Server with info:", reply)
@@ -96,7 +96,7 @@ func main() {
 		clientAddr = conn.RemoteAddr().String()
 		fmt.Println("Client Address: ", clientAddr)
 		gfsMasterNode.Mu.Lock()
-		helper.ChunkServers[clientAddr] = &models.ChunkServerInfo{
+		helper.ChunkServers[clientAddr] = &models.ChunkServerState{
 			LastHeartbeat: time.Now(),
 			Status:        "alive",
 		}

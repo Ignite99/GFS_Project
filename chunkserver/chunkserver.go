@@ -23,17 +23,18 @@ type Chunk struct {
 
 // assume this is for a ChunkServer instance
 type ChunkServer struct {
-	// assume everything stored in database within ChunkServer
-	database []Chunk
+	// assume everything stored in storage within ChunkServer
+	storage []Chunk
 }
 
-/* =============================== Chunk functions =============================== */
+/* =============================== Chunk Storage functions =============================== */
+// Master will talk with these Chunk functions to create, update, delete, or replicate chunks
 
-// get chunk from database
+// get chunk from storage
 func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
 	var chunkRetrieved Chunk
 	// loop through database of ChunkServer
-	for _, val := range cs.database {
+	for _, val := range cs.storage {
 		// find chunk in database with the same chunkHandle
 		if val.chunkHandle == chunkHandle {
 			chunkRetrieved = val
@@ -43,43 +44,46 @@ func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
 	return chunkRetrieved
 }
 
-// add new chunk to database
-func (cs *ChunkServer) addChunk(newChunk Chunk) Chunk {
-	cs.database = append(cs.database, newChunk)
-	return newChunk
+// add new chunk to storage
+func (cs *ChunkServer) addChunk(args Chunk, reply *Chunk) error {
+	cs.storage = append(cs.storage, args)
+	*reply = args
+	return nil
 }
 
-// update value of chunk in database
-func (cs *ChunkServer) updateChunk(chunk Chunk) Chunk {
+// update value of chunk in storage
+func (cs *ChunkServer) updateChunk(args Chunk, reply *Chunk) error {
 	var updatedChunk Chunk
-	for idx, val := range cs.database {
-		if val.chunkHandle == chunk.chunkHandle {
-			cs.database[idx] = chunk
-			updatedChunk = cs.database[idx]
+	for idx, val := range cs.storage {
+		if val.chunkHandle == args.chunkHandle {
+			cs.storage[idx] = args
+			updatedChunk = cs.storage[idx]
 			break
 		}
 	}
-	return updatedChunk
+	*reply = updatedChunk
+	return nil
 }
 
-// delete chunk from database
-func (cs *ChunkServer) deleteChunk(chunk Chunk) Chunk {
+// delete chunk from storage
+func (cs *ChunkServer) deleteChunk(args Chunk, reply *Chunk) error {
 	var deletedChunk Chunk
-	for idx, val := range cs.database {
-		if val.chunkHandle == chunk.chunkHandle {
-			cs.database = append(cs.database[:idx], cs.database[:idx+1]...)
-			deletedChunk = chunk
+	for idx, val := range cs.storage {
+		if val.chunkHandle == args.chunkHandle {
+			cs.storage = append(cs.storage[:idx], cs.storage[:idx+1]...)
+			deletedChunk = args
 			break
 		}
 	}
-	return deletedChunk
+	*reply = deletedChunk
+	return nil
 }
 
 /* ============================ ChunkServer functions ============================ */
 
 // chunk server to reply heartbeat to master to verify that it is alive
-func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerInfo, reply *models.ChunkServerInfo) error {
-	heartBeat := models.ChunkServerInfo{
+func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models.ChunkServerState) error {
+	heartBeat := models.ChunkServerState{
 		LastHeartbeat: time.Now(),
 		Status:        args.Status,
 	}
@@ -88,19 +92,19 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerInfo, reply *models.
 }
 
 // client to call this API when it wants to read data
-func (cs *ChunkServer) read(chunkHandle int, reply *Chunk) error {
+func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
 	// will add more logic here
 	return nil
 }
 
 // client to call this API when it wants to append data
-func (cs *ChunkServer) append(chunkHandle int, reply *Chunk) error {
+func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
 	// will add more logic here
 	return nil
 }
 
 // client to call this API when it wants to truncate data
-func (cs *ChunkServer) truncate(chunkHandle int, reply *Chunk) error {
+func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
 	// will add more logic here
 	return nil
 }
@@ -120,8 +124,12 @@ func (cs *ChunkServer) receiveLease() {
 
 }
 
-// start RPC server for chunk server (refer to Go's RPC documentation for more details)
-func startRPCServer() {
+// command or API call for MAIN function to run chunk server
+func runChunkServer() {
+	chunkServerInstance := new(ChunkServer)
+	rpc.Register(chunkServerInstance)
+
+	// start RPC server for chunk server (refer to Go's RPC documentation for more details)
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
 
 	if err != nil {
@@ -139,19 +147,6 @@ func startRPCServer() {
 		// serve incoming RPC requests
 		go rpc.ServeConn(conn)
 	}
-}
-
-// function to run a ChunkServer instance
-func (cs *ChunkServer) run() {
-
-}
-
-// command or API call for MAIN function to run chunk server
-func runChunkServer() {
-	chunkServerInstance := new(ChunkServer)
-	rpc.Register(chunkServerInstance)
-	startRPCServer()
-	chunkServerInstance.run()
 }
 
 // starting function for this file --> will be moved to main.go

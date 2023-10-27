@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	ChunkServers = make(map[string]*models.ChunkServerInfo)
+	ChunkServers = make(map[string]*models.ChunkServerState)
 
 	ErrChunkNotFound   = errors.New("[ERROR] Chunk not found")
 	ErrInvalidMetaData = errors.New("[ERROR] Invalid chunk metadata")
