@@ -1,7 +1,6 @@
 package models
 
 import (
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,8 +16,7 @@ type ChunkMetadata struct {
 	Location int
 }
 
-type ClientInfo struct {
+type ChunkServerInfo struct {
 	LastHeartbeat time.Time
 	Status        string
-	Mu            sync.Mutex
 }

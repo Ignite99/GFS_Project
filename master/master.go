@@ -42,19 +42,27 @@ func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *
 	return nil
 }
 
+// heartbeat only need to send from Chunk Server to Master, no need client send
 // Somehow the client address port keeps on changing, or maybe unless i change it? To instead just post the a static string
-func (mn *MasterNode) HeartBeatManager() error {
+func (mn *MasterNode) HeartBeatManager() {
 	mn.Mu.Lock()
 	defer mn.Mu.Unlock()
-	client, ok := helper.Clients[clientAddr]
-	if !ok {
-		return helper.ErrNotRegistered
+	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
+	if err != nil {
+		log.Fatal("Dialing error", err)
 	}
-	client.Mu.Lock()
-	defer client.Mu.Unlock()
-	client.LastHeartbeat = time.Now()
-	client.Status = "alive"
-	return nil
+	defer client.Close()
+
+	heartBeatRequest := models.ChunkServerInfo{
+		LastHeartbeat: time.Now(),
+		Status:        "alive",
+	}
+	var reply models.ChunkServerInfo
+	log.Println("Send heartbeat request to chunk")
+	client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
+	log.Println("Received heartbeat reply from Chunk Server with info:", reply)
+	return
+
 }
 
 func main() {
@@ -84,16 +92,17 @@ func main() {
 			continue
 		}
 
-		// Not too sure how I am going to ensure client address stays the same haiz
+		// // Not too sure how I am going to ensure client address stays the same haiz
 		clientAddr = conn.RemoteAddr().String()
 		fmt.Println("Client Address: ", clientAddr)
 		gfsMasterNode.Mu.Lock()
-		helper.Clients[clientAddr] = &models.ClientInfo{
+		helper.ChunkServers[clientAddr] = &models.ChunkServerInfo{
 			LastHeartbeat: time.Now(),
 			Status:        "alive",
 		}
 		gfsMasterNode.Mu.Unlock()
-
+		// send heartbeat
+		gfsMasterNode.HeartBeatManager()
 		go rpc.ServeConn(conn)
 	}
 }

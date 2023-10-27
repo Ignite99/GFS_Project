@@ -1,10 +1,14 @@
-package chunkserver
+package main
 
 import (
 	"log"
 	"net"
-	"net/http"
 	"net/rpc"
+	"strconv"
+	"time"
+
+	"github.com/sutd_gfs_project/helper"
+	"github.com/sutd_gfs_project/models"
 )
 
 // data structure used for this GFS operation
@@ -23,12 +27,7 @@ type ChunkServer struct {
 	database []Chunk
 }
 
-// used for API calls in RPC (refer to: https://steemit.com/utopian-io/@tensor/building-a-basic-rpc-server-and-client-with-go)
-type API int
-
-/* -------------------------------------------------------------------------------- */
-/* ---------------------------------Chunk functions-------------------------------- */
-/* -------------------------------------------------------------------------------- */
+/* =============================== Chunk functions =============================== */
 
 // get chunk from database
 func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
@@ -76,29 +75,32 @@ func (cs *ChunkServer) deleteChunk(chunk Chunk) Chunk {
 	return deletedChunk
 }
 
-/* -------------------------------------------------------------------------------- */
-/* -----------------------------ChunkServer functions------------------------------ */
-/* -------------------------------------------------------------------------------- */
+/* ============================ ChunkServer functions ============================ */
 
-// chunk server to send heartbeat to master to check if its alive
-func (cs *ChunkServer) sendHeartBeat() {
-
+// chunk server to reply heartbeat to master to verify that it is alive
+func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerInfo, reply *models.ChunkServerInfo) error {
+	heartBeat := models.ChunkServerInfo{
+		LastHeartbeat: time.Now(),
+		Status:        args.Status,
+	}
+	*reply = heartBeat
+	return nil
 }
 
 // client to call this API when it wants to read data
-func (a *API) read(chunkHandle int, reply *Chunk) error {
+func (cs *ChunkServer) read(chunkHandle int, reply *Chunk) error {
 	// will add more logic here
 	return nil
 }
 
 // client to call this API when it wants to append data
-func (a *API) append(chunkHandle int, reply *Chunk) error {
+func (cs *ChunkServer) append(chunkHandle int, reply *Chunk) error {
 	// will add more logic here
 	return nil
 }
 
 // client to call this API when it wants to truncate data
-func (a *API) truncate(chunkHandle int, reply *Chunk) error {
+func (cs *ChunkServer) truncate(chunkHandle int, reply *Chunk) error {
 	// will add more logic here
 	return nil
 }
@@ -119,20 +121,23 @@ func (cs *ChunkServer) receiveLease() {
 }
 
 // start RPC server for chunk server (refer to Go's RPC documentation for more details)
-func startRPC() {
-	rpc.HandleHTTP()
-
-	listener, err := net.Listen("tcp", "localhost:8080")
+func startRPCServer() {
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
 
 	if err != nil {
-		log.Fatal("Listener error", err)
+		log.Fatal("Error starting RPC server", err)
 	}
+	defer listener.Close()
 
-	log.Printf("Serving RPC on port %d", 8080)
-	err = http.Serve(listener, nil)
+	log.Printf("RPC listening on port %d", helper.CHUNK_SERVER_START_PORT)
 
-	if err != nil {
-		log.Fatal("Error serving", err)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatal("Error accepting connection", err)
+		}
+		// serve incoming RPC requests
+		go rpc.ServeConn(conn)
 	}
 }
 
@@ -143,8 +148,9 @@ func (cs *ChunkServer) run() {
 
 // command or API call for MAIN function to run chunk server
 func runChunkServer() {
-	startRPC()
-	chunkServerInstance := ChunkServer{}
+	chunkServerInstance := new(ChunkServer)
+	rpc.Register(chunkServerInstance)
+	startRPCServer()
 	chunkServerInstance.run()
 }
 

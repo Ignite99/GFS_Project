@@ -9,12 +9,13 @@ import (
 const (
 	BASE_URL = "http://localhost"
 
-	MASTER_SERVER_PORT = 8080
-	CLIENT_START_PORT  = 8081
+	MASTER_SERVER_PORT      = 8080
+	CLIENT_START_PORT       = 8081
+	CHUNK_SERVER_START_PORT = 8090
 )
 
 var (
-	Clients = make(map[string]*models.ClientInfo)
+	ChunkServers = make(map[string]*models.ChunkServerInfo)
 
 	ErrChunkNotFound   = errors.New("[ERROR] Chunk not found")
 	ErrInvalidMetaData = errors.New("[ERROR] Invalid chunk metadata")
