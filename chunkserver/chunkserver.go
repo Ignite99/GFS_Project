@@ -94,12 +94,23 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 // client to call this API when it wants to read data
 func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
 	// will add more logic here
+
 	return nil
 }
 
 // client to call this API when it wants to append data
-func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
-	// will add more logic here
+//func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
+// will add more logic here
+//	return nil
+//}
+
+// client to call this API when it wants to append data
+func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk, data []int) error {
+
+	chunktoappend := cs.getChunk(reply.chunkHandle)
+	chunktoappend.data = append(chunktoappend.data, data...)
+
+	*reply = chunktoappend
 	return nil
 }
 
@@ -111,6 +122,9 @@ func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *Chunk
 
 // master to call this when it needs to create new replica for a chunk
 func (cs *ChunkServer) createNewReplica() {
+	chunkServerReplica := new(ChunkServer)
+	rpc.Register(chunkServerReplica)
+	chunkServerReplica.storage = cs.storage
 
 }
 

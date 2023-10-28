@@ -102,7 +102,7 @@ func main() {
 		}
 		gfsMasterNode.Mu.Unlock()
 		// send heartbeat
-		gfsMasterNode.HeartBeatManager()
+		//gfsMasterNode.HeartBeatManager()
 		go rpc.ServeConn(conn)
 	}
 }

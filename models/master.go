@@ -13,7 +13,7 @@ type GetChunkLocationArgs struct {
 
 type ChunkMetadata struct {
 	Handle   uuid.UUID
-	Location int
+	Location int //chunkserver location
 }
 
 type ChunkServerState struct {
