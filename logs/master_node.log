@@ -12410,8 +12410,9 @@
 2023/10/27 17:05:11 RPC server is listening on port 8080
 2023/10/27 22:33:00 RPC server is listening on port 8080
 2023/10/27 22:33:15 RPC server is listening on port 8080
-2023/10/28 18:25:16 RPC server is listening on port 8080
-2023/10/28 18:25:23 Send heartbeat request to chunk
-2023/10/28 18:25:23 Received heartbeat reply from Chunk Server with info: {2023-10-28 18:25:23.849304974 +0800 +08 alive}
-2023/10/28 18:25:23 Send heartbeat request to chunk
-2023/10/28 18:25:23 Received heartbeat reply from Chunk Server with info: {2023-10-28 18:25:23.850467039 +0800 +08 alive}
+2023/10/28 14:00:55 RPC server is listening on port 8080
+2023/10/28 14:04:14 RPC server is listening on port 8080
+2023/10/28 15:19:46 RPC server is listening on port 8080
+2023/10/28 15:23:29 RPC server is listening on port 8080
+2023/10/28 15:26:49 RPC server is listening on port 8080
+2023/10/28 16:14:42 RPC server is listening on port 8080

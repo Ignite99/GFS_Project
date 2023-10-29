@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/rpc"
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
@@ -17,14 +19,16 @@ type Object []int
 
 // each Chunk can be referred by its chunkHandle
 type Chunk struct {
-	chunkHandle int
-	data        []int
+	chunkHandle     int //should we use the chunkmetadata handle instead?
+	chunkMetaHandle uuid.UUID
+	data            []int
 }
 
 // assume this is for a ChunkServer instance
 type ChunkServer struct {
 	// assume everything stored in storage within ChunkServer
-	storage []Chunk
+	Location int // same as location in chunkmetadata
+	storage  []Chunk
 }
 
 /* =============================== Chunk Storage functions =============================== */
@@ -94,12 +98,30 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 // client to call this API when it wants to read data
 func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
 	// will add more logic here
+	ch := chunkMetadata.Handle
+	for _, chunk := range cs.storage {
+		if chunk.chunkMetaHandle == ch {
+			fmt.Println(chunk.data)
+			*reply = chunk
+		}
+	}
+
 	return nil
 }
 
 // client to call this API when it wants to append data
-func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
-	// will add more logic here
+//func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
+// will add more logic here
+//	return nil
+//}
+
+// client to call this API when it wants to append data
+func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk, data []int) error {
+
+	chunktoappend := cs.getChunk(reply.chunkHandle)
+	chunktoappend.data = append(chunktoappend.data, data...)
+
+	*reply = chunktoappend
 	return nil
 }
 
@@ -111,11 +133,18 @@ func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *Chunk
 
 // master to call this when it needs to create new replica for a chunk
 func (cs *ChunkServer) createNewReplica() {
+	chunkServerReplica := new(ChunkServer)
+	rpc.Register(chunkServerReplica)
+	chunkServerReplica.storage = cs.storage
 
 }
 
 // master to call this when it needs to remove a chunk
-func (cs *ChunkServer) removeChunk() {
+//func (cs *ChunkServer) removeChunk() {
+
+//}
+
+func (cs *ChunkServer) removeChunk(chunkHandle int) {
 
 }
 
