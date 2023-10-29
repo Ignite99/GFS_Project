@@ -19,9 +19,8 @@ type Object []int
 
 // each Chunk can be referred by its chunkHandle
 type Chunk struct {
-	chunkHandle     int //should we use the chunkmetadata handle instead?
-	chunkMetaHandle uuid.UUID
-	data            []int
+	chunkHandle uuid.UUID
+	data        []int
 }
 
 // assume this is for a ChunkServer instance
@@ -35,7 +34,7 @@ type ChunkServer struct {
 // Master will talk with these Chunk functions to create, update, delete, or replicate chunks
 
 // get chunk from storage
-func (cs *ChunkServer) getChunk(chunkHandle int) Chunk {
+func (cs *ChunkServer) getChunk(chunkHandle uuid.UUID) Chunk {
 	var chunkRetrieved Chunk
 	// loop through database of ChunkServer
 	for _, val := range cs.storage {
@@ -100,7 +99,7 @@ func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) er
 	// will add more logic here
 	ch := chunkMetadata.Handle
 	for _, chunk := range cs.storage {
-		if chunk.chunkMetaHandle == ch {
+		if chunk.chunkHandle == ch {
 			fmt.Println(chunk.data)
 			*reply = chunk
 		}
@@ -118,8 +117,10 @@ func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) er
 // client to call this API when it wants to append data
 func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk, data []int) error {
 
-	chunktoappend := cs.getChunk(reply.chunkHandle)
+	chunktoappend := cs.getChunk(chunkMetadata.Handle)
 	chunktoappend.data = append(chunktoappend.data, data...)
+
+	cs.addChunk(chunktoappend, nil)
 
 	*reply = chunktoappend
 	return nil
@@ -128,6 +129,10 @@ func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk, 
 // client to call this API when it wants to truncate data
 func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
 	// will add more logic here
+	chunkToTruncate := cs.getChunk(chunkMetadata.Handle)
+	cs.deleteChunk(chunkToTruncate, nil)
+
+	*reply = chunkToTruncate
 	return nil
 }
 
