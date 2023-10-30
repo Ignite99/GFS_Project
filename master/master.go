@@ -65,6 +65,17 @@ func (mn *MasterNode) HeartBeatManager() {
 
 }
 
+// Master to select a set of Chunk Servers to store replicas of a particular chunk
+// this function will also process files that are created for the first time (and have not been stored in Chunk Servers)
+func (mn *MasterNode) CreateReplicas() {
+
+}
+
+// Master to create lease for chunk servers
+func (mn *MasterNode) CreateLease() {
+
+}
+
 func main() {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {

@@ -109,12 +109,6 @@ func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) er
 }
 
 // client to call this API when it wants to append data
-//func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
-// will add more logic here
-//	return nil
-//}
-
-// client to call this API when it wants to append data
 func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk, data []int) error {
 
 	chunktoappend := cs.getChunk(chunkMetadata.Handle)
@@ -141,15 +135,6 @@ func (cs *ChunkServer) createNewReplica() {
 	chunkServerReplica := new(ChunkServer)
 	rpc.Register(chunkServerReplica)
 	chunkServerReplica.storage = cs.storage
-
-}
-
-// master to call this when it needs to remove a chunk
-//func (cs *ChunkServer) removeChunk() {
-
-//}
-
-func (cs *ChunkServer) removeChunk(chunkHandle int) {
 
 }
 
