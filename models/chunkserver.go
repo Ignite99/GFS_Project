@@ -6,4 +6,3 @@ import uuid "github.com/satori/go.uuid"
 type Chunk struct {
 	ChunkHandle uuid.UUID
 	Data        []int
-}

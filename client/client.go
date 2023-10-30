@@ -61,9 +61,7 @@ func AppendChunk() {
 	}
 }
 
-func createFile() {
-
-}
+func createFile() {}
 
 // Start the client, to be called from main.go
 // Will update so that it receives inputs and performs ops accordingly
