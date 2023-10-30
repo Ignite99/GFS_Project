@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 type GetChunkLocationArgs struct {
@@ -19,4 +19,5 @@ type ChunkMetadata struct {
 type ChunkServerState struct {
 	LastHeartbeat time.Time
 	Status        string
+	Node          int
 }

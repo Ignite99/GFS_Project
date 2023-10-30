@@ -6,9 +6,10 @@ import (
 	"net"
 	"net/rpc"
 	"strconv"
+	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
@@ -26,8 +27,9 @@ type Chunk struct {
 // assume this is for a ChunkServer instance
 type ChunkServer struct {
 	// assume everything stored in storage within ChunkServer
-	Location int // same as location in chunkmetadata
-	storage  []Chunk
+	Location        int // same as location in chunkmetadata
+	storage         []Chunk
+	ChunkingStorage sync.Map
 }
 
 /* =============================== Chunk Storage functions =============================== */
@@ -89,6 +91,7 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 	heartBeat := models.ChunkServerState{
 		LastHeartbeat: time.Now(),
 		Status:        args.Status,
+		Node:          helper.CHUNK_SERVER_START_PORT,
 	}
 	*reply = heartBeat
 	return nil
