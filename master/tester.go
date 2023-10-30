@@ -16,7 +16,7 @@ func Test() {
 	}
 	defer client.Close()
 
-	args := models.GetChunkLocationArgs{
+	args := models.ChunkLocationArgs{
 		Filename:   "file1.txt",
 		ChunkIndex: 1,
 	}

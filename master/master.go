@@ -24,7 +24,7 @@ type MasterNode struct {
 }
 
 // Used for read for chunkserver
-func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *models.ChunkMetadata) error {
+func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.ChunkMetadata) error {
 	key := args.Filename + "_" + strconv.Itoa(args.ChunkIndex)
 
 	// Loads the filename + chunk index to load metadata from key
@@ -117,7 +117,7 @@ func (mn *MasterNode) CreateReplicas() {
 	}
 }
 
-func (mn *MasterNode) Append() {
+func (mn *MasterNode) Append(args models.ChunkLocationArgs, reply *models.ChunkMetadata) {
 
 }
 

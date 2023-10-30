@@ -6,9 +6,13 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-type GetChunkLocationArgs struct {
+type ChunkLocationArgs struct {
 	Filename   string
 	ChunkIndex int
+}
+
+type Append struct {
+	Filename string
 }
 
 type ChunkMetadata struct {
