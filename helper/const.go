@@ -2,6 +2,7 @@ package helper
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/sutd_gfs_project/models"
 )
@@ -15,7 +16,9 @@ const (
 )
 
 var (
-	ChunkServers = make(map[string]*models.ChunkServerState)
+	ChunkServers     = make(map[string]*models.ChunkServerState)
+	AckMap           sync.Map
+	ChunkServerPorts []int
 
 	ErrChunkNotFound   = errors.New("[ERROR] Chunk not found")
 	ErrInvalidMetaData = errors.New("[ERROR] Invalid chunk metadata")

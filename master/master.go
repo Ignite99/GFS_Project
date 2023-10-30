@@ -17,10 +17,9 @@ import (
 var clientAddr string
 
 type MasterNode struct {
-	ChunkInfo    map[string]map[int]models.ChunkMetadata
-	Chunks       sync.Map
-	Mu           sync.Mutex
-	ChunkServers sync.Map
+	ChunkInfo map[string]map[int]models.ChunkMetadata
+	Chunks    sync.Map
+	Mu        sync.Mutex
 }
 
 func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *models.ChunkMetadata) error {
@@ -44,11 +43,13 @@ func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *
 
 // heartbeat only need to send from Chunk Server to Master, no need client send
 // Somehow the client address port keeps on changing, or maybe unless i change it? To instead just post the a static string
-func HeartBeatManager() models.ChunkServerState {
+func HeartBeatManager(port int) models.ChunkServerState {
+	var reply models.ChunkServerState
 
-	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
+	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
-		log.Fatal("Dialing error", err)
+		log.Print("Dialing error: ", err)
+		return reply
 	}
 	defer client.Close()
 
@@ -56,7 +57,6 @@ func HeartBeatManager() models.ChunkServerState {
 		LastHeartbeat: time.Now(),
 		Status:        "alive",
 	}
-	var reply models.ChunkServerState
 
 	log.Println("Send heartbeat request to chunk")
 	client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
@@ -66,10 +66,16 @@ func HeartBeatManager() models.ChunkServerState {
 
 func HeartBeatTracker() {
 	for {
-		output := HeartBeatManager()
-		if output.Status != "alive" {
+		for _, port := range helper.ChunkServerPorts {
+			output := HeartBeatManager(port)
+			if output.Status != "alive" {
+				helper.AckMap.Store(port, "dead")
 
+				log.Printf("Chunk Server at port %d is dead", port)
+			}
 		}
+
+		time.Sleep(30 * time.Second)
 	}
 }
 
@@ -94,6 +100,7 @@ func main() {
 
 	gfsMasterNode := new(MasterNode)
 	gfsMasterNode.InitializeChunkInfo()
+	gfsMasterNode.InitializeAckMap()
 	rpc.Register(gfsMasterNode)
 
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
@@ -102,7 +109,7 @@ func main() {
 	}
 	defer listener.Close()
 
-	go HeartBeatManager()
+	go HeartBeatTracker()
 
 	log.Printf("RPC server is listening on port %d", helper.MASTER_SERVER_PORT)
 
@@ -162,4 +169,10 @@ func (mn *MasterNode) InitializeChunkInfo() {
 		Location: 1,
 	}
 	mn.Chunks.Store("file2.txt_1", metadata4)
+}
+
+func (mn *MasterNode) InitializeAckMap() {
+	helper.AckMap.Store(helper.CHUNK_SERVER_START_PORT, "alive")
+
+	helper.ChunkServerPorts = append(helper.ChunkServerPorts, helper.CHUNK_SERVER_START_PORT)
 }
