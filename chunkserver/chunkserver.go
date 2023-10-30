@@ -18,17 +18,11 @@ import (
 // an Object is split into several Chunks
 type Object []int
 
-// each Chunk can be referred by its chunkHandle
-type Chunk struct {
-	chunkHandle uuid.UUID
-	data        []int
-}
-
 // assume this is for a ChunkServer instance
 type ChunkServer struct {
 	// assume everything stored in storage within ChunkServer
 	Location        int // same as location in chunkmetadata
-	storage         []Chunk
+	storage         []models.Chunk
 	ChunkingStorage sync.Map
 }
 
@@ -36,12 +30,12 @@ type ChunkServer struct {
 // Master will talk with these Chunk functions to create, update, delete, or replicate chunks
 
 // get chunk from storage
-func (cs *ChunkServer) getChunk(chunkHandle uuid.UUID) Chunk {
-	var chunkRetrieved Chunk
+func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID) models.Chunk {
+	var chunkRetrieved models.Chunk
 	// loop through database of ChunkServer
 	for _, val := range cs.storage {
 		// find chunk in database with the same chunkHandle
-		if val.chunkHandle == chunkHandle {
+		if val.ChunkHandle == chunkHandle {
 			chunkRetrieved = val
 			break
 		}
@@ -50,17 +44,17 @@ func (cs *ChunkServer) getChunk(chunkHandle uuid.UUID) Chunk {
 }
 
 // add new chunk to storage
-func (cs *ChunkServer) addChunk(args Chunk, reply *Chunk) error {
+func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.Chunk) error {
 	cs.storage = append(cs.storage, args)
 	*reply = args
 	return nil
 }
 
 // update value of chunk in storage
-func (cs *ChunkServer) updateChunk(args Chunk, reply *Chunk) error {
-	var updatedChunk Chunk
+func (cs *ChunkServer) UpdateChunk(args models.Chunk, reply *models.Chunk) error {
+	var updatedChunk models.Chunk
 	for idx, val := range cs.storage {
-		if val.chunkHandle == args.chunkHandle {
+		if val.ChunkHandle == args.ChunkHandle {
 			cs.storage[idx] = args
 			updatedChunk = cs.storage[idx]
 			break
@@ -71,10 +65,10 @@ func (cs *ChunkServer) updateChunk(args Chunk, reply *Chunk) error {
 }
 
 // delete chunk from storage
-func (cs *ChunkServer) deleteChunk(args Chunk, reply *Chunk) error {
-	var deletedChunk Chunk
+func (cs *ChunkServer) DeleteChunk(args models.Chunk, reply *models.Chunk) error {
+	var deletedChunk models.Chunk
 	for idx, val := range cs.storage {
-		if val.chunkHandle == args.chunkHandle {
+		if val.ChunkHandle == args.ChunkHandle {
 			cs.storage = append(cs.storage[:idx], cs.storage[:idx+1]...)
 			deletedChunk = args
 			break
@@ -98,12 +92,12 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 }
 
 // client to call this API when it wants to read data
-func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
+func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
 	// will add more logic here
 	ch := chunkMetadata.Handle
 	for _, chunk := range cs.storage {
-		if chunk.chunkHandle == ch {
-			fmt.Println(chunk.data)
+		if chunk.ChunkHandle == ch {
+			fmt.Println(chunk.Data)
 			*reply = chunk
 		}
 	}
@@ -112,37 +106,36 @@ func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *Chunk) er
 }
 
 // client to call this API when it wants to append data
-func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *Chunk, data []int) error {
+func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *models.Chunk, data []int) error {
 
-	chunktoappend := cs.getChunk(chunkMetadata.Handle)
-	chunktoappend.data = append(chunktoappend.data, data...)
+	chunktoappend := cs.GetChunk(chunkMetadata.Handle)
+	chunktoappend.Data = append(chunktoappend.Data, data...)
 
-	cs.addChunk(chunktoappend, nil)
+	cs.AddChunk(chunktoappend, nil)
 
 	*reply = chunktoappend
 	return nil
 }
 
 // client to call this API when it wants to truncate data
-func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *Chunk) error {
+func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
 	// will add more logic here
-	chunkToTruncate := cs.getChunk(chunkMetadata.Handle)
-	cs.deleteChunk(chunkToTruncate, nil)
+	chunkToTruncate := cs.GetChunk(chunkMetadata.Handle)
+	cs.DeleteChunk(chunkToTruncate, nil)
 
 	*reply = chunkToTruncate
 	return nil
 }
 
 // master to call this when it needs to create new replica for a chunk
-func (cs *ChunkServer) createNewReplica() {
+func (cs *ChunkServer) CreateNewReplica() {
 	chunkServerReplica := new(ChunkServer)
 	rpc.Register(chunkServerReplica)
 	chunkServerReplica.storage = cs.storage
-
 }
 
 // master to call this to pass lease to chunk server
-func (cs *ChunkServer) receiveLease() {
+func (cs *ChunkServer) ReceiveLease() {
 
 }
 

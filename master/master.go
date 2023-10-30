@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
@@ -22,6 +23,7 @@ type MasterNode struct {
 	Mu        sync.Mutex
 }
 
+// Used for read for chunkserver
 func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *models.ChunkMetadata) error {
 	key := args.Filename + "_" + strconv.Itoa(args.ChunkIndex)
 
@@ -41,8 +43,6 @@ func (mn *MasterNode) GetChunkLocation(args models.GetChunkLocationArgs, reply *
 	return nil
 }
 
-// heartbeat only need to send from Chunk Server to Master, no need client send
-// Somehow the client address port keeps on changing, or maybe unless i change it? To instead just post the a static string
 func HeartBeatManager(port int) models.ChunkServerState {
 	var reply models.ChunkServerState
 
@@ -64,6 +64,7 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	return reply
 }
 
+// Will iterate through all chunk servers initialised and ping server with heartbeatManager
 func HeartBeatTracker() {
 	for {
 		for _, port := range helper.ChunkServerPorts {
@@ -82,6 +83,41 @@ func HeartBeatTracker() {
 // Master to select a set of Chunk Servers to store replicas of a particular chunk
 // this function will also process files that are created for the first time (and have not been stored in Chunk Servers)
 func (mn *MasterNode) CreateReplicas() {
+	log.Println("======== Starting Replication ========")
+	aliveNodes := make(map[int]string)
+
+	helper.AckMap.Range(func(key, value interface{}) bool {
+		if val, ok := value.(string); ok && val == "alive" {
+			if port, ok := key.(int); ok {
+				aliveNodes[port] = val
+			}
+		}
+		return true
+	})
+
+	for port, _ := range aliveNodes {
+		client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
+		if err != nil {
+			log.Fatal("Error connecting to RPC server:", err)
+		}
+		defer client.Close()
+
+		args := models.Chunk{
+			ChunkHandle: uuid.NewV4(),
+			Data:        []int{},
+		}
+		var reply models.Chunk
+
+		err = client.Call("ChunkServer.AddChunk", args, &reply)
+		if err != nil {
+			log.Fatal("Error calling RPC method: ", err)
+		}
+
+		fmt.Printf("This is the chunkHandle: %v, data: %v\n", reply.ChunkHandle, reply.Data)
+	}
+}
+
+func (mn *MasterNode) Append() {
 
 }
 
@@ -101,6 +137,8 @@ func main() {
 	gfsMasterNode := new(MasterNode)
 	gfsMasterNode.InitializeChunkInfo()
 	gfsMasterNode.InitializeAckMap()
+
+	gfsMasterNode.CreateReplicas()
 	rpc.Register(gfsMasterNode)
 
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
@@ -136,15 +174,15 @@ func main() {
 
 func (mn *MasterNode) InitializeChunkInfo() {
 
-	test1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
-	test2 := helper.StringToUUID("a45a0e0e-68d0-493f-8771-f7947cc9217e")
-	test3 := helper.StringToUUID("61acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
-	test4 := helper.StringToUUID("a49a0e0e-68d0-493f-8771-f7947cc9217e")
+	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	uuid2 := helper.StringToUUID("a45a0e0e-68d0-493f-8771-f7947cc9217e")
+	uuid3 := helper.StringToUUID("61acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	uuid4 := helper.StringToUUID("a49a0e0e-68d0-493f-8771-f7947cc9217e")
 
 	// Handle is the uuid of the metadata that has been assigned to the chunk
 	// Location is the chunkServer that it is located in
 	metadata1 := models.ChunkMetadata{
-		Handle:   test1,
+		Handle:   uuid1,
 		Location: 1,
 	}
 
@@ -153,19 +191,19 @@ func (mn *MasterNode) InitializeChunkInfo() {
 	mn.Chunks.Store("file1.txt_0", metadata1)
 
 	metadata2 := models.ChunkMetadata{
-		Handle:   test2,
+		Handle:   uuid2,
 		Location: 1,
 	}
 	mn.Chunks.Store("file1.txt_1", metadata2)
 
 	metadata3 := models.ChunkMetadata{
-		Handle:   test3,
+		Handle:   uuid3,
 		Location: 1,
 	}
 	mn.Chunks.Store("file2.txt_0", metadata3)
 
 	metadata4 := models.ChunkMetadata{
-		Handle:   test4,
+		Handle:   uuid4,
 		Location: 1,
 	}
 	mn.Chunks.Store("file2.txt_1", metadata4)
