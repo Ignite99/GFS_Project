@@ -15,7 +15,9 @@ import (
 	"github.com/sutd_gfs_project/models"
 )
 
-type Object []int
+// data structure used for this GFS operation
+// an Object is split into several Chunks
+type Object []byte
 
 type ChunkServer struct {
 	storage         []models.Chunk
@@ -121,6 +123,14 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 
 	// Adds chunk in chunk server for data that overflowed
 	if len(chunk.Data) > helper.CHUNK_SIZE {
+		exceedingData := []byte{}
+		for _, num := range chunk.Data {
+			if len(chunk.Data) < 64 {
+				// Add the number to the exceedingNumbers slice if it's within the first 64 elements.
+				exceedingData = append(exceedingData, num)
+			}
+		}
+
 		chunk.Data = chunk.Data[:64]
 		exceedingData := chunk.Data[64:]
 
@@ -219,22 +229,22 @@ func (cs *ChunkServer) InitialiseChunks() {
 	chunk1 := models.Chunk{
 		ChunkHandle: uuid1,
 		ChunkIndex:  0,
-		Data:        []int{13, 64, 39, 42},
+		Data:        []byte("Hello"),
 	}
 	chunk2 := models.Chunk{
 		ChunkHandle: uuid1,
 		ChunkIndex:  1,
-		Data:        []int{39, 64, 38, 41},
+		Data:        []byte("World"),
 	}
 	chunk3 := models.Chunk{
 		ChunkHandle: uuid1,
 		ChunkIndex:  2,
-		Data:        []int{31, 46, 1, 54},
+		Data:        []byte("Foo"),
 	}
 	chunk4 := models.Chunk{
 		ChunkHandle: uuid1,
 		ChunkIndex:  3,
-		Data:        []int{3, 2, 5},
+		Data:        []byte("Bar"),
 	}
 
 	cs.storage = append(cs.storage, chunk1, chunk2, chunk3, chunk4)

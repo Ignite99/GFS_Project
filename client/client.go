@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"os"
 
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
@@ -16,30 +17,26 @@ import (
 type Task struct {
 	Operation int
 	Filename  string
-	Filesize  int
+	DataSize  int
 }
 
 const (
 	READ   = iota
 	APPEND = iota
+	WRITE  = iota
 
 	FILE1 = "file1.txt"
 	FILE2 = "file2.txt"
 	FILE3 = "file3.txt"
+
+	CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-var (
-	File1Size = 65
-	File2Size = 10
-	File3Size = 120
-)
+/* =============================== Chunk-related functions =============================== */
 
 // Request chunk location from master server
 func RequestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata {
-	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
-	if err != nil {
-		log.Fatal("Dialing error", err)
-	}
+	client := Dial(helper.MASTER_SERVER_PORT)
 	defer client.Close()
 
 	chunkRequest := models.ChunkLocationArgs{
@@ -52,102 +49,133 @@ func RequestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata 
 }
 
 // Read from a chunk in the chunk server
-func ReadChunk(metadata models.ChunkMetadata) {
-	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
-	if err != nil {
-		log.Fatal("Error connecting to RPC server: ", err)
-	}
+func ReadChunk(metadata models.ChunkMetadata) []byte {
+	client := Dial(helper.CHUNK_SERVER_START_PORT)
 	defer client.Close()
 
-	// Following the API in chunk server, but needs to be updated to follow the GFS spec
 	var reply models.Chunk
-	err = client.Call("ChunkServer.Read", metadata, &reply)
+	err := client.Call("ChunkServer.Read", metadata, &reply)
 	if err != nil {
 		log.Fatal("Error calling RPC method: ", err)
 	}
-	fmt.Println("Received chunk: ", reply.Data)
+	fmt.Println("Received chunk: ", string(reply.Data))
+
+	return reply.Data
 }
 
 // Append to a chunk in the chunk server
-func AppendChunk(filename string, data []int) {
+func AppendChunk(filename string, data []byte) {
 	var appendReply models.AppendData
 	var reply models.Chunk
 	// var replicationReply models.ReplicationResponse
 
-	client1, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.MASTER_SERVER_PORT))
-	if err != nil {
-		log.Fatal("Error connecting to RPC server: ", err)
-	}
-
+	client1 := Dial(helper.MASTER_SERVER_PORT)
 	appendArgs := models.Append{Filename: filename, Data: data}
 
 	// Sends a request to the master node. This request includes the file name it wants to append data to.
-	err = client1.Call("MasterNode.Append", appendArgs, &appendReply)
+	err := client1.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Fatal("Error calling RPC method: ", err)
 	}
 	client1.Close()
 
-	client2, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
-	if err != nil {
-		log.Fatal("Error connecting to RPC server: ", err)
-	}
+	client2 := Dial(helper.CHUNK_SERVER_START_PORT)
 	err = client2.Call("ChunkServer.Append", appendReply, &reply)
 	if err != nil {
 		log.Fatal("Error calling RPC method: ", err)
 	}
 	client2.Close()
 
-	log.Println("Successfully appended payload: ", reply)
+	log.Println("Successfully appended payload: ", string(reply.Data))
 }
 
-func CreateFile() {}
+/* =============================== File-related functions =============================== */
+
+func ReadFile(filename string) {
+	// Compute number of chunks
+	fi, err := os.Stat(filename)
+	if err != nil {
+		log.Fatal("Error acquiring file information: ", err)
+	}
+	chunks := fi.Size()/helper.CHUNK_SIZE + 1
+
+	// Read each chunk
+	for i := 0; int64(i) < chunks; i++ {
+		chunkMetadata := RequestChunkLocation(filename, i)
+		ReadChunk(chunkMetadata)
+	}
+	// TODO: Update local copy
+}
+
+func AppendToFile(filename string, size int) {
+	data := GenerateData(size)
+	AppendChunk(filename, data)
+	// TODO: append to local copy of file here if ok response
+}
+
+func CreateFile(filename string, filesize int) {
+	// Create the file locally
+	data := GenerateData(filesize)
+	err := os.WriteFile(filename, data, 0666)
+	if err != nil {
+		log.Fatal("Error writing to file: ", err)
+	}
+
+	// Push to master server
+	client := Dial(helper.MASTER_SERVER_PORT)
+	defer client.Close()
+	var reply models.Chunk // TODO: type is placeholder
+	err = client.Call("MasterNode.CreateFile", data, &reply)
+	if err != nil {
+		log.Fatal("Error calling RPC method: ", err)
+	}
+	// TODO: call append chunk afterwards?
+}
+
+/* =============================== Helper functions =============================== */
+
+func Dial(address int) *rpc.Client {
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(address))
+	if err != nil {
+		log.Fatal("Dialing error", err)
+	}
+	return client
+}
+
+// Creates a byte array with random characters
+func GenerateData(size int) []byte {
+	data := make([]byte, size)
+	for i := range data {
+		data[i] = CHARACTERS[rand.Intn(len(CHARACTERS))]
+	}
+	return data
+}
+
+/* =============================== Bootstrap functions =============================== */
 
 // Start the client, to be called from main.go
 func StartClients() {
 	fmt.Println("======== RUNNING CLIENTS ========")
-
-	task1 := Task{
-		Operation: READ,
-		Filename:  FILE1,
-		Filesize:  File1Size,
-	}
-
-	task2 := Task{
-		Operation: APPEND,
-		Filename:  FILE1,
-		Filesize:  File1Size,
-	}
-
-	runClient(task1)
-	runClient(task2)
+	//runClient(Task{Operation: WRITE, Filename: FILE2, DataSize: 64})
+	//runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 65})
+	runClient(Task{Operation: READ, Filename: FILE1})
+	runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10})
 }
+
 func runClient(t Task) {
-
-	chunks := t.Filesize/helper.CHUNK_SIZE + 1
 	if t.Operation == READ {
-		for i := 0; i < chunks; i++ {
-			chunkMetadata := RequestChunkLocation(t.Filename, i)
-			ReadChunk(chunkMetadata)
-		}
-	} else if t.Operation == APPEND {
-		dataSize := rand.Intn(helper.CHUNK_SIZE)
-		fmt.Println("Data size: ", dataSize)
-		data := make([]int, dataSize)
-		for i := 0; i < dataSize; i++ {
-			data[i] = rand.Intn(100)
-		}
-		fmt.Println("Data: ", data)
-		AppendChunk(t.Filename, data)
+		ReadFile(t.Filename)
+		return
 	}
-	/*
-		chunkMetadata := RequestChunkLocation("file1", 0)
-		ReadChunk(chunkMetadata)
-		chunkMetadata = RequestChunkLocation("file1", 1)
-		ReadChunk(chunkMetadata)
 
-		AppendChunk("file1.txt")
-	*/
+	if t.Operation == APPEND {
+		AppendToFile(t.Filename, t.DataSize)
+		return
+	}
+
+	if t.Operation == WRITE {
+		CreateFile(t.Filename, t.DataSize)
+	}
 }
 
 func main() {
