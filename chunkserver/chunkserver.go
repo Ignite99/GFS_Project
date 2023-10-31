@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -30,16 +31,17 @@ type ChunkServer struct {
 // Master will talk with these Chunk functions to create, update, delete, or replicate chunks
 
 // get chunk from storage
-func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID) models.Chunk {
+func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID, chunkLocation int) models.Chunk {
 	var chunkRetrieved models.Chunk
-	// loop through database of ChunkServer
+
+	// Only iterate through those with relevant uuid. Will only enter upon detecting ChunkLocation is similar to chunkIndex
 	for _, val := range cs.storage {
-		// find chunk in database with the same chunkHandle
-		if val.ChunkHandle == chunkHandle {
+		if val.ChunkHandle == chunkHandle && val.ChunkIndex == chunkLocation {
 			chunkRetrieved = val
 			break
 		}
 	}
+
 	return chunkRetrieved
 }
 
@@ -113,26 +115,64 @@ func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *models.Ch
 }
 
 // client to call this API when it wants to append data
-func (cs *ChunkServer) Append(chunkMetadata models.ChunkMetadata, reply *models.Chunk, data []int) error {
+func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error {
 
-	chunktoappend := cs.GetChunk(chunkMetadata.Handle)
-	chunktoappend.Data = append(chunktoappend.Data, data...)
+	var newChunk models.Chunk
+	var successResponse models.SuccessJSON
 
-	cs.AddChunk(chunktoappend, nil)
+	log.Println("Appending starting")
 
-	*reply = chunktoappend
+	chunk := cs.GetChunk(args.Handle, args.Location)
+	chunk.Data = append(chunk.Data, args.Data...)
+
+	// Adds chunk in chunk server for data that overflowed
+	if len(chunk.Data) > helper.CHUNK_SIZE {
+		exceedingData := []int{}
+		for _, num := range chunk.Data {
+			if len(chunk.Data) < 64 {
+				// Add the number to the exceedingNumbers slice if it's within the first 64 elements.
+				exceedingData = append(exceedingData, num)
+			}
+		}
+
+		chunk.Data = chunk.Data[:64]
+
+		newChunk = models.Chunk{
+			ChunkHandle: args.Handle,
+			ChunkIndex:  chunk.ChunkIndex + 1,
+			Data:        exceedingData,
+		}
+
+		cs.AddChunk(newChunk, nil)
+	}
+
+	// Updates Master for new last index entry
+	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+	if err != nil {
+		log.Println("Dialing error: ", err)
+	}
+
+	err = client.Call("MasterNode.UpdateLastIndex", chunk, &successResponse)
+	if err != nil {
+		log.Println("Error calling RPC method: ", err)
+	}
+	client.Close()
+
+	log.Println("Successful Last Index Update: ", successResponse)
+
+	*reply = chunk
 	return nil
 }
 
 // client to call this API when it wants to truncate data
-func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
-	// will add more logic here
-	chunkToTruncate := cs.GetChunk(chunkMetadata.Handle)
-	cs.DeleteChunk(chunkToTruncate, nil)
+// func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
+// 	// will add more logic here
+// 	chunkToTruncate := cs.GetChunk(chunkMetadata.Handle)
+// 	cs.DeleteChunk(chunkToTruncate, nil)
 
-	*reply = chunkToTruncate
-	return nil
-}
+// 	*reply = chunkToTruncate
+// 	return nil
+// }
 
 // master to call this when it needs to create new replica for a chunk
 func (cs *ChunkServer) CreateNewReplica() {
@@ -148,8 +188,17 @@ func (cs *ChunkServer) ReceiveLease() {
 
 // command or API call for MAIN function to run chunk server
 func runChunkServer() {
+	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("Error opening log file:", err)
+	}
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	chunkServerInstance := new(ChunkServer)
 	rpc.Register(chunkServerInstance)
+
+	chunkServerInstance.InitialiseChunks()
 
 	// start RPC server for chunk server (refer to Go's RPC documentation for more details)
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
@@ -174,4 +223,32 @@ func runChunkServer() {
 // starting function for this file --> will be moved to main.go
 func main() {
 	runChunkServer()
+}
+
+func (cs *ChunkServer) InitialiseChunks() {
+	fmt.Println("Initialised chunkServer Data")
+	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+
+	chunk1 := models.Chunk{
+		ChunkHandle: uuid1,
+		ChunkIndex:  0,
+		Data:        []int{13, 64, 39, 42},
+	}
+	chunk2 := models.Chunk{
+		ChunkHandle: uuid1,
+		ChunkIndex:  1,
+		Data:        []int{39, 64, 38, 41},
+	}
+	chunk3 := models.Chunk{
+		ChunkHandle: uuid1,
+		ChunkIndex:  2,
+		Data:        []int{31, 46, 1, 54},
+	}
+	chunk4 := models.Chunk{
+		ChunkHandle: uuid1,
+		ChunkIndex:  3,
+		Data:        []int{3, 2, 5},
+	}
+
+	cs.storage = append(cs.storage, chunk1, chunk2, chunk3, chunk4)
 }

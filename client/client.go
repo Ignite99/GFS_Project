@@ -69,27 +69,35 @@ func ReadChunk(metadata models.ChunkMetadata) {
 
 // Append to a chunk in the chunk server
 func AppendChunk(filename string, data []int) {
-	var appendReply models.ReplicationResponse
+	var appendReply models.AppendData
+	var reply models.Chunk
 	// var replicationReply models.ReplicationResponse
 
-	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+	client1, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
 		log.Fatal("Error connecting to RPC server: ", err)
 	}
-	defer client.Close()
 
-	appendArgs := models.Append{
-		Filename: filename,
-		Data:     data,
-	}
+	appendArgs := models.Append{Filename: filename, Data: data}
 
 	// Sends a request to the master node. This request includes the file name it wants to append data to.
-	err = client.Call("MasterNode.Append", appendArgs, &appendReply)
+	err = client1.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Fatal("Error calling RPC method: ", err)
 	}
+	client1.Close()
 
-	fmt.Println("Append response: ", appendReply)
+	client2, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
+	if err != nil {
+		log.Fatal("Error connecting to RPC server: ", err)
+	}
+	err = client2.Call("ChunkServer.Append", appendReply, &reply)
+	if err != nil {
+		log.Fatal("Error calling RPC method: ", err)
+	}
+	client2.Close()
+
+	fmt.Println("Append response: ", reply)
 }
 
 func CreateFile() {}
