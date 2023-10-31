@@ -76,17 +76,17 @@ func HeartBeatTracker() {
 	}
 }
 
-// Follow up of append operation
-// Master to select a set of Chunk Servers to store replicas of a particular chunk
-// this function will also process files that are created for the first time (and have not been stored in Chunk Servers)
-func (mn *MasterNode) Replication(args models.Replication) models.ReplicationResponse {
+// Replicates chunk to all existing chunkServers
+// Since all chunkServers anytime they add a chunk they should just replicate
+func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) error {
 	var output models.SuccessJSON
 	var response models.ChunkMetadata
+	var filename string
 
 	fmt.Println("======== Starting Replication ========")
 	aliveNodes := make(map[int]string)
-	ChunkLastIndexLocations := make(map[int]int)
 
+	// Find all alive nodes
 	helper.AckMap.Range(func(key, value interface{}) bool {
 		if val, ok := value.(string); ok && val == "alive" {
 			if port, ok := key.(int); ok {
@@ -100,40 +100,46 @@ func (mn *MasterNode) Replication(args models.Replication) models.ReplicationRes
 	for port, _ := range aliveNodes {
 		client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 		if err != nil {
-			log.Fatal("Error connecting to RPC server:", err)
+			log.Println("Error connecting to RPC server:", err)
 		}
-		defer client.Close()
 
 		addChunkArgs := models.Chunk{
-			ChunkHandle: args.Chunk.ChunkHandle,
-			Data:        args.Chunk.Data,
+			ChunkHandle: args.ChunkHandle,
+			ChunkIndex:  args.ChunkIndex,
+			Data:        args.Data,
 		}
 
-		// Reply with file uuid & last index
+		// Reply with file uuid & last index of chunk
 		err = client.Call("ChunkServer.AddChunk", addChunkArgs, &output)
 		if err != nil {
-			log.Fatal("Error calling RPC method: ", err)
+			log.Println("Error calling RPC method: ", err)
 		}
+		client.Close()
 
 		response = models.ChunkMetadata{
 			Handle:   output.FileID,
 			Location: output.LastIndex,
 		}
-
-		mn.Chunks.Store(args.Filename, response)
-		ChunkLastIndexLocations[port] = output.LastIndex
 	}
 
-	replicationResponse := models.ReplicationResponse{
-		FileName:        args.Filename,
-		StorageLocation: ChunkLastIndexLocations,
-	}
-	return replicationResponse
+	mn.Chunks.Range(func(key, value interface{}) bool {
+		if metadata, ok := value.(models.ChunkMetadata); ok {
+			if metadata.Handle == args.ChunkHandle {
+				filename = key.(string)
+				return false
+			}
+		}
+		return true
+	})
+
+	mn.Chunks.Store(filename, response)
+
+	*reply = output
+	return nil
 }
 
 func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error {
 	var appendArgs models.AppendData
-	// var appendResponse models.Chunk
 
 	// The master node receives the client's request for appending data to the file and processes it.
 	// It verifies that the file exists and handles any naming conflicts or errors.
@@ -156,29 +162,10 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	return nil
 }
 
-func (mn *MasterNode) UpdateLastIndex(args models.Chunk, reply *models.SuccessJSON) error {
-	fmt.Println("Updating Last index")
-
-	newMetadata := models.ChunkMetadata{
-		Handle:   args.ChunkHandle,
-		Location: args.ChunkIndex,
-	}
-
-	mn.Chunks.Store("file1.txt", newMetadata)
-
-	log.Println("Updated Last Index")
-	*reply = models.SuccessJSON{
-		FileID:    args.ChunkHandle,
-		LastIndex: args.ChunkIndex,
-	}
-	return nil
-}
-
 func (mn *MasterNode) CreateFile() {
 
 }
 
-// Master to create lease for chunk servers
 func (mn *MasterNode) CreateLease() {
 
 }
