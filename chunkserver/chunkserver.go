@@ -44,9 +44,16 @@ func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID) models.Chunk {
 }
 
 // add new chunk to storage
-func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.Chunk) error {
+func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) error {
+	log.Println("============== ADDING CHUNK ==============")
+	log.Println("Chunk added: ", args)
 	cs.storage = append(cs.storage, args)
-	*reply = args
+	index := len(cs.storage)
+
+	*reply = models.SuccessJSON{
+		FileID:    args.ChunkHandle,
+		LastIndex: index,
+	}
 	return nil
 }
 

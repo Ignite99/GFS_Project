@@ -13,11 +13,12 @@ type ChunkLocationArgs struct {
 
 type Append struct {
 	Filename string
+	Data     []int
 }
 
 type ChunkMetadata struct {
 	Handle   uuid.UUID
-	Location int //chunkserver location
+	Location int
 }
 
 type ChunkServerState struct {
@@ -25,3 +26,21 @@ type ChunkServerState struct {
 	Status        string
 	Node          int
 }
+
+/* =========== Replication & Append ===========*/
+type SuccessJSON struct {
+	FileID    uuid.UUID
+	LastIndex int
+}
+
+type Replication struct {
+	Filename string
+	Chunk    Chunk
+}
+
+type ReplicationResponse struct {
+	FileName        string
+	StorageLocation map[int]int
+}
+
+/* =========== Replication & Append ===========*/

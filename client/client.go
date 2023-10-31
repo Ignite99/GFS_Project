@@ -3,9 +3,9 @@ package main // should be client, set temporarily as main so it can be run
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/rpc"
 	"strconv"
-	"math/rand"
 	"time"
 
 	"github.com/sutd_gfs_project/helper"
@@ -14,12 +14,12 @@ import (
 
 type Task struct {
 	Operation int
-	Filename string
-	Filesize int
+	Filename  string
+	Filesize  int
 }
 
 const (
-	READ = iota
+	READ   = iota
 	APPEND = iota
 
 	FILE1 = "file1.txt"
@@ -69,46 +69,53 @@ func ReadChunk(metadata models.ChunkMetadata) {
 
 // Append to a chunk in the chunk server
 func AppendChunk(filename string, data []int) {
+	var appendReply models.ReplicationResponse
+	// var replicationReply models.ReplicationResponse
+
 	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
 		log.Fatal("Error connecting to RPC server: ", err)
 	}
 	defer client.Close()
 
-	args := models.ChunkLocationArgs{
+	appendArgs := models.Append{
 		Filename: filename,
+		Data:     data,
 	}
-	var reply models.ChunkMetadata
 
-	// Dont need call chunk index, if client knew chunk index that would be weird
-	err = client.Call("MasterNode.Append", args, &reply)
+	// Sends a request to the master node. This request includes the file name it wants to append data to.
+	err = client.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Fatal("Error calling RPC method: ", err)
 	}
+
+	fmt.Println("Append response: ", appendReply)
 }
 
-func createFile() {}
+func CreateFile() {}
 
 // Start the client, to be called from main.go
 func StartClients() {
-	task1 := Task{
-		Operation: READ,
-		Filename: FILE1,
-		Filesize: File1Size,
-	}
+	fmt.Println("======== RUNNING CLIENTS ========")
+
+	// task1 := Task{
+	// 	Operation: READ,
+	// 	Filename:  FILE1,
+	// 	Filesize:  File1Size,
+	// }
 
 	task2 := Task{
 		Operation: APPEND,
-		Filename: FILE1,
-		Filesize: File1Size,
+		Filename:  FILE1,
+		Filesize:  File1Size,
 	}
 
-	go runClient(task1)
-	go runClient(task2)
+	// runClient(task1)
+	runClient(task2)
 }
 func runClient(t Task) {
 
-	chunks := t.Filesize / helper.CHUNK_SIZE + 1
+	chunks := t.Filesize/helper.CHUNK_SIZE + 1
 	if t.Operation == READ {
 		for i := 0; i < chunks; i++ {
 			chunkMetadata := RequestChunkLocation(t.Filename, i)
@@ -116,19 +123,21 @@ func runClient(t Task) {
 		}
 	} else if t.Operation == APPEND {
 		dataSize := rand.Intn(helper.CHUNK_SIZE)
+		fmt.Println("Data size: ", dataSize)
 		data := make([]int, dataSize)
 		for i := 0; i < dataSize; i++ {
 			data[i] = rand.Intn(100)
 		}
+		fmt.Println("Data: ", data)
 		AppendChunk(t.Filename, data)
 	}
 	/*
-	chunkMetadata := RequestChunkLocation("file1", 0)
-	ReadChunk(chunkMetadata)
-	chunkMetadata = RequestChunkLocation("file1", 1)
-	ReadChunk(chunkMetadata)
+		chunkMetadata := RequestChunkLocation("file1", 0)
+		ReadChunk(chunkMetadata)
+		chunkMetadata = RequestChunkLocation("file1", 1)
+		ReadChunk(chunkMetadata)
 
-	AppendChunk("file1.txt")
+		AppendChunk("file1.txt")
 	*/
 }
 
