@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"net/rpc"
+	"os"
 	"strconv"
 	"time"
 
@@ -97,7 +98,7 @@ func AppendChunk(filename string, data []int) {
 	}
 	client2.Close()
 
-	fmt.Println("Append response: ", reply)
+	log.Println("Successfully appended payload: ", reply)
 }
 
 func CreateFile() {}
@@ -106,11 +107,11 @@ func CreateFile() {}
 func StartClients() {
 	fmt.Println("======== RUNNING CLIENTS ========")
 
-	// task1 := Task{
-	// 	Operation: READ,
-	// 	Filename:  FILE1,
-	// 	Filesize:  File1Size,
-	// }
+	task1 := Task{
+		Operation: READ,
+		Filename:  FILE1,
+		Filesize:  File1Size,
+	}
 
 	task2 := Task{
 		Operation: APPEND,
@@ -118,7 +119,7 @@ func StartClients() {
 		Filesize:  File1Size,
 	}
 
-	// runClient(task1)
+	runClient(task1)
 	runClient(task2)
 }
 func runClient(t Task) {
@@ -150,6 +151,13 @@ func runClient(t Task) {
 }
 
 func main() {
+	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("Error opening log file:", err)
+	}
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	rand.Seed(time.Now().UnixNano())
 	StartClients()
 }

@@ -15,14 +15,9 @@ import (
 	"github.com/sutd_gfs_project/models"
 )
 
-// data structure used for this GFS operation
-// an Object is split into several Chunks
 type Object []int
 
-// assume this is for a ChunkServer instance
 type ChunkServer struct {
-	// assume everything stored in storage within ChunkServer
-	Location        int // same as location in chunkmetadata
 	storage         []models.Chunk
 	ChunkingStorage sync.Map
 }
@@ -116,7 +111,6 @@ func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *models.Ch
 
 // client to call this API when it wants to append data
 func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error {
-
 	var newChunk models.Chunk
 	var successResponse models.SuccessJSON
 
@@ -127,15 +121,8 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 
 	// Adds chunk in chunk server for data that overflowed
 	if len(chunk.Data) > helper.CHUNK_SIZE {
-		exceedingData := []int{}
-		for _, num := range chunk.Data {
-			if len(chunk.Data) < 64 {
-				// Add the number to the exceedingNumbers slice if it's within the first 64 elements.
-				exceedingData = append(exceedingData, num)
-			}
-		}
-
 		chunk.Data = chunk.Data[:64]
+		exceedingData := chunk.Data[64:]
 
 		newChunk = models.Chunk{
 			ChunkHandle: args.Handle,
@@ -143,22 +130,22 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 			Data:        exceedingData,
 		}
 
-		cs.AddChunk(newChunk, nil)
-	}
+		// cs.AddChunk(newChunk, nil)
 
-	// Updates Master for new last index entry
-	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
-	if err != nil {
-		log.Println("Dialing error: ", err)
-	}
+		// Updates Master for new last index entry
+		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+		if err != nil {
+			log.Println("Dialing error: ", err)
+		}
 
-	err = client.Call("MasterNode.UpdateLastIndex", chunk, &successResponse)
-	if err != nil {
-		log.Println("Error calling RPC method: ", err)
-	}
-	client.Close()
+		err = client.Call("MasterNode.Replication", newChunk, &successResponse)
+		if err != nil {
+			log.Println("Error calling RPC method: ", err)
+		}
+		client.Close()
 
-	log.Println("Successful Last Index Update: ", successResponse)
+		log.Println("Successful Replication: ", successResponse)
+	}
 
 	*reply = chunk
 	return nil
