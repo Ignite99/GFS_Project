@@ -30,12 +30,12 @@ type SuccessJSON struct {
 
 type Append struct {
 	Filename string
-	Data     []int
+	Data     []byte
 }
 
 type AppendData struct {
 	ChunkMetadata
-	Data []int
+	Data []byte
 }
 
 type Replication struct {
