@@ -11,6 +11,11 @@ type ChunkLocationArgs struct {
 	ChunkIndex int
 }
 
+type Append struct {
+	Filename string
+	Data     []int
+}
+
 type ChunkMetadata struct {
 	Handle   uuid.UUID
 	Location int
@@ -26,16 +31,6 @@ type ChunkServerState struct {
 type SuccessJSON struct {
 	FileID    uuid.UUID
 	LastIndex int
-}
-
-type Append struct {
-	Filename string
-	Data     []int
-}
-
-type AppendData struct {
-	ChunkMetadata
-	Data []int
 }
 
 type Replication struct {

@@ -68,16 +68,14 @@ func ReadChunk(metadata models.ChunkMetadata) {
 }
 
 // Append to a chunk in the chunk server
-func ClientAppend(filename string, data []int) {
-	var appendReply models.AppendData
-	// var reply models.Chunk
+func AppendChunk(filename string, data []int) {
+	var appendReply models.ReplicationResponse
 	// var replicationReply models.ReplicationResponse
 
-	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
 		log.Fatal("Error connecting to RPC server: ", err)
 	}
-
 	defer client.Close()
 
 	appendArgs := models.Append{
@@ -91,18 +89,7 @@ func ClientAppend(filename string, data []int) {
 		log.Fatal("Error calling RPC method: ", err)
 	}
 
-	fmt.Println("APPEND REPLY from master node: ", appendReply)
-
-	// fmt.Println("Trying to connect to chunkserver")
-
-	// err = client.Call("ChunkServer.AppendChunk", appendReply, &reply)
-	// if err != nil {
-	// 	log.Println("Error calling RPC method: ", err)
-	// }
-
-	// fmt.Println("APPEND RESPONSE: ", reply)
-
-	// log.Println("Replicated at these locations: ", appendReply.StorageLocation)
+	fmt.Println("Append response: ", appendReply)
 }
 
 func CreateFile() {}
@@ -142,7 +129,7 @@ func runClient(t Task) {
 			data[i] = rand.Intn(100)
 		}
 		fmt.Println("Data: ", data)
-		ClientAppend(t.Filename, data)
+		AppendChunk(t.Filename, data)
 	}
 	/*
 		chunkMetadata := RequestChunkLocation("file1", 0)

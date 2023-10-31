@@ -72,7 +72,7 @@ func HeartBeatTracker() {
 			}
 		}
 
-		time.Sleep(3 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }
 
@@ -131,27 +131,7 @@ func (mn *MasterNode) Replication(args models.Replication) models.ReplicationRes
 	return replicationResponse
 }
 
-func (mn *MasterNode) UpdateLastIndex(args models.Chunk, reply *models.SuccessJSON) {
-	fmt.Println("Updating Last index")
-
-	newMetadata := models.ChunkMetadata{
-		Handle:   args.ChunkHandle,
-		Location: args.ChunkIndex,
-	}
-
-	mn.Chunks.Store("file1.txt", newMetadata)
-
-	log.Println("Updated Last Index")
-	*reply = models.SuccessJSON{
-		FileID:    args.ChunkHandle,
-		LastIndex: args.ChunkIndex,
-	}
-}
-
-func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) {
-	var appendArgs models.AppendData
-	// var appendResponse models.Chunk
-
+func (mn *MasterNode) Append(args models.Append, reply *models.ReplicationResponse) error {
 	// The master node receives the client's request for appending data to the file and processes it.
 	// It verifies that the file exists and handles any naming conflicts or errors.
 	appendFile, ok := mn.Chunks.Load(args.Filename)
@@ -163,18 +143,26 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) {
 	// Provides the client with information about the last chunk of the file
 	chunkMetadata, ok := appendFile.(models.ChunkMetadata)
 	if !ok {
-		log.Println("Error from append: ", helper.ErrInvalidMetaData)
+		return helper.ErrInvalidMetaData
 	}
 
-	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
-	if err != nil {
-		log.Print("Dialing error: ", err)
+	ChunkToReplicate := models.Chunk{
+		ChunkHandle: chunkMetadata.Handle,
+		Data:        args.Data,
 	}
-	client.Close()
 
-	appendArgs = models.AppendData{ChunkMetadata: chunkMetadata, Data: args.Data}
+	replicationArgs := models.Replication{
+		Filename: args.Filename,
+		Chunk:    ChunkToReplicate,
+	}
 
-	*reply = appendArgs
+	replicationResponse := mn.Replication(replicationArgs)
+
+	fmt.Println("Replicated at these locations: ", replicationResponse.StorageLocation)
+
+	*reply = replicationResponse
+
+	return nil
 }
 
 func (mn *MasterNode) CreateFile() {
@@ -225,16 +213,32 @@ func main() {
 func (mn *MasterNode) InitializeChunkInfo() {
 
 	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	uuid2 := helper.StringToUUID("a45a0e0e-68d0-493f-8771-f7947cc9217e")
+	uuid3 := helper.StringToUUID("61acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	// uuid4 := helper.StringToUUID("a49a0e0e-68d0-493f-8771-f7947cc9217e")
 
 	// Handle is the uuid of the metadata that has been assigned to the chunk
 	// Location is the chunkServer that it is located in
 	metadata1 := models.ChunkMetadata{
-		Handle: uuid1,
-		// Last index of file, based on ChunkIndex in models.Chunk
-		Location: 3,
+		Handle:   uuid1,
+		Location: 1,
 	}
 
+	// The reason why it has a underscore 0 in its naming is to indicate the chunk index.
+	// Thus if file1.txt_0. It is the first chunk of file1.txt
 	mn.Chunks.Store("file1.txt", metadata1)
+
+	metadata2 := models.ChunkMetadata{
+		Handle:   uuid2,
+		Location: 1,
+	}
+	mn.Chunks.Store("file2.txt", metadata2)
+
+	metadata3 := models.ChunkMetadata{
+		Handle:   uuid3,
+		Location: 1,
+	}
+	mn.Chunks.Store("file3.txt", metadata3)
 }
 
 func (mn *MasterNode) InitializeAckMap() {
