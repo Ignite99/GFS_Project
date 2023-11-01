@@ -143,14 +143,14 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	if len(chunk.Data) > helper.CHUNK_SIZE {
 		exceedingData := []byte{}
 		for _, num := range chunk.Data {
-			if len(chunk.Data) < 64 {
+			if len(chunk.Data) < helper.CHUNK_SIZE {
 				// Add the number to the exceedingNumbers slice if it's within the first 64 elements.
 				exceedingData = append(exceedingData, num)
 			}
 		}
 
-		chunk.Data = chunk.Data[:64]
-		exceedingData = chunk.Data[64:]
+		chunk.Data = chunk.Data[:helper.CHUNK_SIZE]
+		exceedingData = chunk.Data[helper.CHUNK_SIZE:]
 
 		newChunk = models.Chunk{
 			ChunkHandle: args.Handle,
