@@ -24,27 +24,41 @@ func requestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata 
 	}
 	var reply models.ChunkMetadata
 	client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
+
+	if chunkIndex != reply.LastIndex {
+		log.Println("Last Index in arguments is incorrect LastIndex of chunkServer")
+		log.Println("The last index of chunkServer is: ", reply.LastIndex)
+	}
+
 	return reply
 }
 
 // Read from a chunk in the chunk server
-func readChunk(metadata models.ChunkMetadata) []byte {
-	client := dial(helper.CHUNK_SERVER_START_PORT)
+func readChunks(metadata models.ChunkMetadata, index1 int, index2 int) []byte {
+	client := dial(metadata.Location)
 	defer client.Close()
 
-	var reply models.Chunk
-	err := client.Call("ChunkServer.Read", metadata, &reply)
+	var reply []byte
+
+	query := models.ReadData{
+		ChunkIndex1:   index1,
+		ChunkIndex2:   index2,
+		ChunkMetadata: metadata,
+	}
+
+	err := client.Call("ChunkServer.ReadRange", query, &reply)
 	if err != nil {
 		log.Println("[Client] Error calling RPC method: ", err)
 	}
-	fmt.Println("Received chunk: ", string(reply.Data))
 
-	return reply.Data
+	log.Println("Received chunk: ", string(reply))
+
+	return reply
 }
 
 /* =============================== File-related functions =============================== */
 
-func ReadFile(filename string) {
+func ReadFile(filename string, firstIndex int, LastIndex int) {
 	// Compute number of chunks
 	fi, err := os.Stat(filename)
 	if err != nil {
@@ -54,7 +68,7 @@ func ReadFile(filename string) {
 
 	// Read each chunk
 	chunkMetadata := requestChunkLocation(filename, chunks)
-	readChunk(chunkMetadata)
+	readChunks(chunkMetadata, firstIndex, LastIndex)
 	// TODO: update local copy here
 }
 

@@ -10,6 +10,6 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 
-logs/master_node.log
+logs/*
 client/file*.txt
 file*.txt

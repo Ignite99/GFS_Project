@@ -116,15 +116,26 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 }
 
 // client to call this API when it wants to read data
-func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
-	// will add more logic here
-	ch := chunkMetadata.Handle
-	for _, chunk := range cs.storage {
-		if chunk.ChunkHandle == ch {
-			fmt.Println(chunk.Data)
-			*reply = chunk
+func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
+	var dataStream []byte
+
+	chunkUUID := args.ChunkMetadata.Handle
+
+	if args.ChunkIndex1 == args.ChunkIndex2 {
+		for _, chunk := range cs.storage {
+			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex == args.ChunkIndex1 {
+				dataStream = append(dataStream, chunk.Data...)
+			}
+		}
+	} else {
+		for _, chunk := range cs.storage {
+			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex >= args.ChunkIndex1 && chunk.ChunkIndex <= args.ChunkIndex2 {
+				dataStream = append(dataStream, chunk.Data...)
+			}
 		}
 	}
+
+	*reply = dataStream
 
 	return nil
 }
@@ -212,12 +223,13 @@ func runChunkServer(portNumber int) {
 
 	// initialize chunk server instance
 	chunkServerInstance := &ChunkServer{
-		storage: make([]models.Chunk, helper.MAX_CHUNK_AMT),
+		storage: make([]models.Chunk, 0),
 		portNum: portNumber,
 	}
 	rpc.Register(chunkServerInstance)
 
 	chunkServerInstance.InitialiseChunks()
+	chunkServerInstance.Registration(portNumber)
 
 	// start RPC server for chunk server (refer to Go's RPC documentation for more details)
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(portNumber))
@@ -245,6 +257,10 @@ func main() {
 
 	flag.IntVar(&portNumber, "portNumber", helper.CHUNK_SERVER_START_PORT, "Port number of Chunk Server.")
 	flag.Parse()
+
+	// go run chunkserver.go --portNumber 8090-8095
+	// Port number arguments
+
 	runChunkServer(portNumber)
 }
 
@@ -274,4 +290,22 @@ func (cs *ChunkServer) InitialiseChunks() {
 	}
 
 	cs.storage = append(cs.storage, chunk1, chunk2, chunk3, chunk4)
+}
+
+func (cs *ChunkServer) Registration(portNum int) {
+	var response string
+
+	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+	if err != nil {
+		log.Println("Dialing error: ", err)
+	}
+
+	err = client.Call("MasterNode.RegisterChunkServers", portNum, &response)
+	if err != nil {
+		log.Println("Error calling RPC method: ", err)
+	}
+	client.Close()
+
+	log.Printf("ChunkServer on port: %d. Registration Response %s\n", portNum, response)
+
 }
