@@ -1,13 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/rpc"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -15,13 +15,9 @@ import (
 	"github.com/sutd_gfs_project/models"
 )
 
-// data structure used for this GFS operation
-// an Object is split into several Chunks
-type Object []byte
-
 type ChunkServer struct {
-	storage         []models.Chunk
-	ChunkingStorage sync.Map
+	storage []models.Chunk
+	portNum int
 }
 
 /* =============================== Chunk Storage functions =============================== */
@@ -51,23 +47,6 @@ func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) er
 
 	*reply = models.SuccessJSON{
 		FileID:    args.ChunkHandle,
-		LastIndex: index,
-	}
-	return nil
-}
-
-func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.SuccessJSON) error {
-	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
-	log.Println("Chunk added: ", args)
-
-	for i := 0; i < len(args); i++ {
-		cs.storage = append(cs.storage, args[i])
-	}
-
-	index := len(cs.storage)
-
-	*reply = models.SuccessJSON{
-		FileID:    args[0].ChunkHandle,
 		LastIndex: index,
 	}
 	return nil
@@ -109,6 +88,7 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 		LastHeartbeat: time.Now(),
 		Status:        args.Status,
 		Node:          helper.CHUNK_SERVER_START_PORT,
+		Port:          cs.portNum,
 	}
 	*reply = heartBeat
 	return nil
@@ -189,11 +169,11 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 // }
 
 // master to call this when it needs to create new replica for a chunk
-func (cs *ChunkServer) CreateNewReplica() {
-	chunkServerReplica := new(ChunkServer)
-	rpc.Register(chunkServerReplica)
-	chunkServerReplica.storage = cs.storage
-}
+// func (cs *ChunkServer) CreateNewReplica() {
+// 	chunkServerReplica := new(ChunkServer)
+// 	rpc.Register(chunkServerReplica)
+// 	chunkServerReplica.storage = cs.storage
+// }
 
 // master to call this to pass lease to chunk server
 func (cs *ChunkServer) ReceiveLease() {
@@ -201,33 +181,37 @@ func (cs *ChunkServer) ReceiveLease() {
 }
 
 // command or API call for MAIN function to run chunk server
-func runChunkServer() {
+func runChunkServer(portNumber int) {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		log.Println("Error opening log file:", err)
+		log.Fatal("Error opening log file:", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
 
-	chunkServerInstance := new(ChunkServer)
+	// initialize chunk server instance
+	chunkServerInstance := &ChunkServer{
+		storage: make([]models.Chunk, helper.MAX_CHUNK_AMT),
+		portNum: portNumber,
+	}
 	rpc.Register(chunkServerInstance)
 
 	chunkServerInstance.InitialiseChunks()
 
 	// start RPC server for chunk server (refer to Go's RPC documentation for more details)
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(portNumber))
 
 	if err != nil {
-		log.Println("Error starting RPC server", err)
+		log.Fatal("Error starting RPC server", err)
 	}
 	defer listener.Close()
 
-	log.Printf("RPC listening on port %d", helper.CHUNK_SERVER_START_PORT)
+	log.Printf("RPC listening on port %d", portNumber)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Println("Error accepting connection", err)
+			log.Fatal("Error accepting connection", err)
 		}
 		// serve incoming RPC requests
 		go rpc.ServeConn(conn)
@@ -236,7 +220,11 @@ func runChunkServer() {
 
 // starting function for this file --> will be moved to main.go
 func main() {
-	runChunkServer()
+	var portNumber int
+
+	flag.IntVar(&portNumber, "portNumber", helper.CHUNK_SERVER_START_PORT, "Port number of Chunk Server.")
+	flag.Parse()
+	runChunkServer(portNumber)
 }
 
 func (cs *ChunkServer) InitialiseChunks() {

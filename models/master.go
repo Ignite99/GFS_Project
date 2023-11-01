@@ -20,6 +20,7 @@ type ChunkServerState struct {
 	LastHeartbeat time.Time
 	Status        string
 	Node          int
+	Port          int
 }
 
 /* =========== CreateFile ===========*/
