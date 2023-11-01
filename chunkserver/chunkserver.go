@@ -41,12 +41,33 @@ func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID, chunkLocation int) models
 // add new chunk to storage
 func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) error {
 	log.Println("============== ADDING CHUNK ==============")
-	log.Println("Chunk added: ", args)
+	//log.Println("Chunk added: ", args)
+	log.Println("Chunk added: ", fmt.Sprintf("{%v %d %s}", args.ChunkHandle, args.ChunkIndex, helper.TruncateOutput(args.Data)))
 	cs.storage = append(cs.storage, args)
 	index := len(cs.storage)
 
 	*reply = models.SuccessJSON{
 		FileID:    args.ChunkHandle,
+		LastIndex: index,
+	}
+	return nil
+}
+
+func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.SuccessJSON) error {
+	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
+	//log.Println("Chunk added: ", args) //TODO: truncate output to logfile
+	logMessage := "Chunks added: "
+
+	for _, c := range args {
+		cs.storage = append(cs.storage, c)
+		logMessage += fmt.Sprintf("{%v %d %s}\n", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
+	}
+	log.Println(logMessage)
+
+	index := len(cs.storage)
+
+	*reply = models.SuccessJSON{
+		FileID:    args[0].ChunkHandle,
 		LastIndex: index,
 	}
 	return nil

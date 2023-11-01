@@ -2,6 +2,7 @@ package helper
 
 import (
 	"log"
+	"fmt"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -15,4 +16,9 @@ func StringToUUID(input string) uuid.UUID {
 	}
 
 	return stuff
+}
+
+// TODO: handle <10 char string
+func TruncateOutput(bytestream []byte) string {
+	return fmt.Sprintf("%s... and %d more characters", string(bytestream[:10]), len(bytestream)-10)
 }
