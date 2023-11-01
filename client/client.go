@@ -1,41 +1,21 @@
-package main // should be client, set temporarily as main so it can be run
+package client // should be client, set temporarily as main so it can be run
 
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net/rpc"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
 
-type Task struct {
-	Operation int
-	Filename  string
-	DataSize  int
-}
-
-const (
-	READ   = iota
-	APPEND = iota
-	WRITE  = iota
-
-	FILE1 = "file1.txt"
-	FILE2 = "file2.txt"
-	FILE3 = "file3.txt"
-
-	CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\n"
-)
-
 /* =============================== Chunk-related functions =============================== */
 
 // Request chunk location from master server
-func RequestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata {
-	client := Dial(helper.MASTER_SERVER_PORT)
+func requestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata {
+	client := dial(helper.MASTER_SERVER_PORT)
 	defer client.Close()
 
 	chunkRequest := models.ChunkLocationArgs{
@@ -48,8 +28,8 @@ func RequestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata 
 }
 
 // Read from a chunk in the chunk server
-func ReadChunk(metadata models.ChunkMetadata) []byte {
-	client := Dial(helper.CHUNK_SERVER_START_PORT)
+func readChunk(metadata models.ChunkMetadata) []byte {
+	client := dial(helper.CHUNK_SERVER_START_PORT)
 	defer client.Close()
 
 	var reply models.Chunk
@@ -70,24 +50,23 @@ func ReadFile(filename string) {
 	if err != nil {
 		log.Println("[Client] Error acquiring file information: ", err)
 	}
-	chunks := ComputeNumberOfChunks(int(fi.Size()))
+	chunks := computeNumberOfChunks(int(fi.Size()))
 
 	// Read each chunk
-	chunkMetadata := RequestChunkLocation(filename, chunks)
-	ReadChunk(chunkMetadata)
+	chunkMetadata := requestChunkLocation(filename, chunks)
+	readChunk(chunkMetadata)
 	// TODO: update local copy here
 }
 
 // Append to a chunk in the chunk server
 // TODO: can append at any point within the existing file
-func AppendToFile(filename string, size int) {
-	data := GenerateData(size)
+func AppendToFile(filename string, data []byte) {
 	appendArgs := models.Append{Filename: filename, Data: data}
 	var appendReply models.AppendData
 	// var replicationReply models.ReplicationResponse
 
 	// Sends a request to the master node. This request includes the file name it wants to append data to.
-	mnClient := Dial(helper.MASTER_SERVER_PORT)
+	mnClient := dial(helper.MASTER_SERVER_PORT)
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Println("[Client] Error calling RPC method: ", err)
@@ -96,7 +75,7 @@ func AppendToFile(filename string, size int) {
 
 	// Append data to chunks
 	var reply models.Chunk
-	csClient := Dial(helper.CHUNK_SERVER_START_PORT)
+	csClient := dial(helper.CHUNK_SERVER_START_PORT)
 	err = csClient.Call("ChunkServer.Append", appendReply, &reply)
 	if err != nil {
 		log.Println("[Client] Error calling RPC method: ", err)
@@ -119,11 +98,10 @@ func AppendToFile(filename string, size int) {
 	}
 }
 
-func CreateFile(filename string, filesize int) {
+func CreateFile(filename string, data []byte) {
 	fmt.Println("CREATING FILE")
 
 	// Create the file locally
-	data := GenerateData(filesize)
 	err := os.WriteFile(filename, data, 0644)
 	if err != nil {
 		log.Println("[Client] Error writing to file: ", err)
@@ -131,14 +109,14 @@ func CreateFile(filename string, filesize int) {
 
 	// Compute number of chunks and prepare args
 	var metadata models.ChunkMetadata
-	chunks := ComputeNumberOfChunks(filesize)
+	chunks := computeNumberOfChunks(len(data))
 	createArgs := models.CreateData{
 		Append:         models.Append{Filename: filename, Data: data},
 		NumberOfChunks: chunks,
 	}
 
 	// Inform master server of new file
-	mnClient := Dial(helper.MASTER_SERVER_PORT)
+	mnClient := dial(helper.MASTER_SERVER_PORT)
 	err = mnClient.Call("MasterNode.CreateFile", createArgs, &metadata)
 	if err != nil {
 		log.Println("[Client] Error calling RPC method: ", err)
@@ -166,7 +144,7 @@ func CreateFile(filename string, filesize int) {
 	}
 
 	// Push chunks to chunk server
-	csClient := Dial(helper.CHUNK_SERVER_START_PORT)
+	csClient := dial(helper.CHUNK_SERVER_START_PORT)
 	err = csClient.Call("ChunkServer.CreateFileChunks", chunkArray, &reply)
 	if err != nil {
 		log.Println("[Client] Error calling RPC method: ", err)
@@ -178,24 +156,15 @@ func CreateFile(filename string, filesize int) {
 
 /* =============================== Helper functions =============================== */
 
-func Dial(address int) *rpc.Client {
-	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(address))
+func dial(address int) *rpc.Client {
+	client, err := rpc.dial("tcp", "localhost:"+strconv.Itoa(address))
 	if err != nil {
 		log.Println("[Client] Dialing error", err)
 	}
 	return client
 }
 
-// Creates a byte array with random characters
-func GenerateData(size int) []byte {
-	data := make([]byte, size)
-	for i := range data {
-		data[i] = CHARACTERS[rand.Intn(len(CHARACTERS))]
-	}
-	return data
-}
-
-func ComputeNumberOfChunks(size int) int {
+func computeNumberOfChunks(size int) int {
 	chunks := size/helper.CHUNK_SIZE
 	if (size % helper.CHUNK_SIZE > 0) {
 		chunks++
@@ -203,40 +172,11 @@ func ComputeNumberOfChunks(size int) int {
 	return chunks
 }
 
-/* =============================== Bootstrap functions =============================== */
-
-// Start the client, to be called from main.go
-func StartClients() {
-	//runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
-	runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-	//runClient(Task{Operation: READ, Filename: FILE1})
-	//runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
-}
-
-func runClient(t Task) {
-	if t.Operation == READ {
-		ReadFile(t.Filename)
-		return
-	}
-
-	if t.Operation == APPEND {
-		AppendToFile(t.Filename, t.DataSize)
-		return
-	}
-
-	if t.Operation == WRITE {
-		CreateFile(t.Filename, t.DataSize)
-	}
-}
-
-func main() {
+func main () {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Println("[Client] Error opening log file: ", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
-
-	rand.Seed(time.Now().UnixNano())
-	StartClients()
 }

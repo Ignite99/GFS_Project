@@ -12,3 +12,4 @@ _deps
 
 logs/master_node.log
 client/file*.txt
+file*.txt

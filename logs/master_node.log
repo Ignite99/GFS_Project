@@ -1,0 +1,28 @@
+2023/11/01 16:30:39 RPC listening on port 8090
+2023/11/01 16:30:41 RPC server is listening on port 8080
+2023/11/01 16:30:41 Send heartbeat request to chunk
+2023/11/01 16:30:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:30:41.507305256 +0800 +08 alive 8090 8090}
+2023/11/01 16:31:41 Send heartbeat request to chunk
+2023/11/01 16:31:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:31:41.508411183 +0800 +08 alive 8090 8090}
+2023/11/01 16:32:41 Send heartbeat request to chunk
+2023/11/01 16:32:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:32:41.526075143 +0800 +08 alive 8090 8090}
+2023/11/01 16:33:37 ============== CREATE CHUNKS IN CHUNK SERVER ==============
+2023/11/01 16:33:37 Chunks added: {fe7f775a-d519-4643-87aa-3982e19ea08f 0 563xE0U6by... and 65526 more characters}
+
+2023/11/01 16:33:37 ============== CREATE CHUNKS IN CHUNK SERVER ==============
+2023/11/01 16:33:37 Chunks added: {365e5625-d667-42c5-ad78-e62514426db1 0 awEvLC743q... and 65526 more characters}
+{365e5625-d667-42c5-ad78-e62514426db1 1 RTxeIGE2pR... and 1014 more characters}
+
+2023/11/01 16:33:37 Appending starting
+2023/11/01 16:33:41 Send heartbeat request to chunk
+2023/11/01 16:33:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:33:41.531616243 +0800 +08 alive 8090 8090}
+2023/11/01 16:34:41 Send heartbeat request to chunk
+2023/11/01 16:34:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:34:41.592750894 +0800 +08 alive 8090 8090}
+2023/11/01 16:35:41 Send heartbeat request to chunk
+2023/11/01 16:35:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:35:41.6535992 +0800 +08 alive 8090 8090}
+2023/11/01 16:36:41 Send heartbeat request to chunk
+2023/11/01 16:36:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:36:41.715104799 +0800 +08 alive 8090 8090}
+2023/11/01 16:37:41 Send heartbeat request to chunk
+2023/11/01 16:37:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:37:41.776237935 +0800 +08 alive 8090 8090}
+2023/11/01 16:38:41 Send heartbeat request to chunk
+2023/11/01 16:38:41 Received heartbeat reply from Chunk Server with info: {2023-11-01 16:38:41.837803691 +0800 +08 alive 8090 8090}
