@@ -70,3 +70,11 @@ type ReplicationResponse struct {
 }
 
 /* =========== Replication & Append ===========*/
+
+/* =========== Registration ===========*/
+
+type Registration struct {
+	Port int
+}
+
+/* =========== Registration ===========*/

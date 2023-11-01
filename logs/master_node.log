@@ -1,0 +1,14 @@
+2023/11/01 21:04:35 RPC server is listening on port 8080
+2023/11/01 21:04:39 ChunkServer on port: 8090. Registration Response Success
+2023/11/01 21:04:39 RPC listening on port 8090
+2023/11/01 21:04:42 ============== CREATE CHUNKS IN CHUNK SERVER ==============
+2023/11/01 21:04:42 Chunks added: {e716d1d0-0afd-47b3-94c1-cf9e79e6c5b6 0 vHu1yTu44g... and 65526 more characters}
+{e716d1d0-0afd-47b3-94c1-cf9e79e6c5b6 1 PubRsfr
+sn... and 1014 more characters}
+
+2023/11/01 21:04:42 [Client] Successfully created file in chunkserver:  {e716d1d0-0afd-47b3-94c1-cf9e79e6c5b6 6}
+2023/11/01 21:04:42 Last Index in arguments is incorrect LastIndex of chunkServer
+2023/11/01 21:04:42 The last index of chunkServer is:  3
+2023/11/01 21:04:42 Received chunk:  WorldFooBar
+2023/11/01 21:04:42 Appending starting
+2023/11/01 21:04:42 [Client] Successfully appended payload:  cxAxBQgYBw... and 10230 more characters

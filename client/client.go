@@ -222,7 +222,7 @@ func ComputeNumberOfChunks(size int) int {
 // Start the client, to be called from main.go
 func StartClients() {
 	//runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
-	// runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+	runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 	runClient(Task{Operation: READ, Filename: FILE1})
 	runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
 }

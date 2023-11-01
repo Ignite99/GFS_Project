@@ -229,6 +229,7 @@ func runChunkServer(portNumber int) {
 	rpc.Register(chunkServerInstance)
 
 	chunkServerInstance.InitialiseChunks()
+	chunkServerInstance.Registration(portNumber)
 
 	// start RPC server for chunk server (refer to Go's RPC documentation for more details)
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(portNumber))
@@ -259,6 +260,7 @@ func main() {
 
 	// go run chunkserver.go --portNumber 8090-8095
 	// Port number arguments
+
 	runChunkServer(portNumber)
 }
 
@@ -288,4 +290,22 @@ func (cs *ChunkServer) InitialiseChunks() {
 	}
 
 	cs.storage = append(cs.storage, chunk1, chunk2, chunk3, chunk4)
+}
+
+func (cs *ChunkServer) Registration(portNum int) {
+	var response string
+
+	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+	if err != nil {
+		log.Println("Dialing error: ", err)
+	}
+
+	err = client.Call("MasterNode.RegisterChunkServers", portNum, &response)
+	if err != nil {
+		log.Println("Error calling RPC method: ", err)
+	}
+	client.Close()
+
+	log.Printf("ChunkServer on port: %d. Registration Response %s\n", portNum, response)
+
 }

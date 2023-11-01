@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -15,7 +16,7 @@ import (
 )
 
 type MasterNode struct {
-	ChunkInfo       map[string]map[int]models.ChunkMetadata
+	ChunkInfo       map[string]models.ChunkMetadata
 	Chunks          sync.Map
 	StorageLocation sync.Map
 	Mu              sync.Mutex
@@ -24,14 +25,9 @@ type MasterNode struct {
 // Used for read for chunkserver
 func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.ChunkMetadata) error {
 	// Loads the filename + chunk index to load metadata from key
-	value, ok := mn.Chunks.Load(args.Filename)
-	if !ok {
+	chunkMetadata := mn.ChunkInfo[args.Filename]
+	if chunkMetadata.Location == 0 {
 		return helper.ErrChunkNotFound
-	}
-
-	chunkMetadata, ok := value.(models.ChunkMetadata)
-	if !ok {
-		return helper.ErrInvalidMetaData
 	}
 
 	*reply = chunkMetadata
@@ -137,7 +133,7 @@ func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) 
 		return true
 	})
 
-	mn.Chunks.Store(filename, response)
+	mn.ChunkInfo[filename] = response
 
 	log.Println("MasterNode updated of new last index: ", response)
 
@@ -150,19 +146,14 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 
 	// The master node receives the client's request for appending data to the file and processes it.
 	// It verifies that the file exists and handles any naming conflicts or errors.
-	appendFile, ok := mn.Chunks.Load(args.Filename)
-	// if !ok {
-	// 	// If cannot be found generate new file, call create file
-	// 	// mn.CreateFile()
-	// }
-
-	// Provides the client with information about the last chunk of the file
-	chunkMetadata, ok := appendFile.(models.ChunkMetadata)
-	if !ok {
-		log.Println("Error from append: ", helper.ErrInvalidMetaData)
+	appendFile := mn.ChunkInfo[args.Filename]
+	if appendFile.Location == 0 {
+		// If cannot be found generate new file, call create file
+		// mn.CreateFile()
+		log.Println("File does not exist")
 	}
 
-	appendArgs = models.AppendData{ChunkMetadata: chunkMetadata, Data: args.Data}
+	appendArgs = models.AppendData{ChunkMetadata: appendFile, Data: args.Data}
 
 	*reply = appendArgs
 
@@ -179,7 +170,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 		LastIndex: args.NumberOfChunks,
 	}
 
-	mn.Chunks.Store(args.Append.Filename, metadata)
+	mn.ChunkInfo[args.Append.Filename] = metadata
 
 	*reply = models.ChunkMetadata{
 		Handle:    uuidNew,
@@ -201,9 +192,11 @@ func main() {
 	defer logfile.Close()
 	log.SetOutput(logfile)
 
-	gfsMasterNode := new(MasterNode)
+	gfsMasterNode := &MasterNode{
+		ChunkInfo: make(map[string]models.ChunkMetadata),
+	}
 	gfsMasterNode.InitializeChunkInfo()
-	gfsMasterNode.InitializeAckMap()
+
 	rpc.Register(gfsMasterNode)
 
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
@@ -241,11 +234,17 @@ func (mn *MasterNode) InitializeChunkInfo() {
 		LastIndex: 3,
 	}
 
-	mn.Chunks.Store("file1.txt", metadata1)
+	mn.ChunkInfo["file1.txt"] = metadata1
 }
 
-func (mn *MasterNode) InitializeAckMap() {
-	helper.AckMap.Store(helper.CHUNK_SERVER_START_PORT, "alive")
+func (mn *MasterNode) RegisterChunkServers(args int, reply *string) error {
+	fmt.Println("Registering port: ", args)
 
-	helper.ChunkServerPorts = append(helper.ChunkServerPorts, helper.CHUNK_SERVER_START_PORT)
+	helper.AckMap.Store(args, "alive")
+
+	helper.ChunkServerPorts = append(helper.ChunkServerPorts, args)
+
+	*reply = "Success"
+
+	return nil
 }
