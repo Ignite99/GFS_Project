@@ -38,7 +38,7 @@ func generateData(size int) []byte {
 
 func runClient(t Task) {
 	if t.Operation == READ {
-		client.ReadFile(t.Filename, 1, 3)
+		client.ReadFile(t.Filename, 1, 1)
 		return
 	}
 
@@ -63,8 +63,8 @@ func main() {
 	defer logfile.Close()
 	log.SetOutput(logfile)
 
-	//runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
+	runClient(Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 	//runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-	runClient(Task{Operation: READ, Filename: FILE1})
-	//runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
+	//runClient(Task{Operation: READ, Filename: FILE2})
+	runClient(Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 }

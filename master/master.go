@@ -40,7 +40,7 @@ func HeartBeatManager(port int) models.ChunkServerState {
 
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
-		log.Print("[ChunkServer] Dialing error: ", err)
+		log.Print("[Master] Dialing error: ", err)
 		return reply
 	}
 	defer client.Close()
@@ -167,7 +167,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 	metadata := models.ChunkMetadata{
 		Handle:    uuidNew,
 		Location:  helper.CHUNK_SERVER_START_PORT,
-		LastIndex: args.NumberOfChunks,
+		LastIndex: args.NumberOfChunks-1,
 	}
 
 	mn.ChunkInfo[args.Append.Filename] = metadata

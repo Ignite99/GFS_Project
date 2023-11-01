@@ -142,34 +142,21 @@ func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
 
 // client to call this API when it wants to append data
 func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error {
-	var newChunk models.Chunk
 	var successResponse models.SuccessJSON
+	chunk := cs.GetChunk(args.ChunkMetadata.Handle, args.ChunkMetadata.LastIndex)
+	index := chunk.ChunkIndex
+	chunkSpace := helper.CHUNK_SIZE - len(chunk.Data)
 
-	log.Println("[ChunkServer] Appending starting")
+	// Make new chunks while data size is greater than chunk size
+	for len(args.Data) > chunkSpace {
+		// Append as much data to last chunk as possible
+		chunk.Data = append(chunk.Data, args.Data[:chunkSpace]...)
+		args.Data = args.Data[chunkSpace:]
+		chunkSpace = helper.CHUNK_SIZE
 
-	chunk := cs.GetChunk(args.Handle, args.Location)
-	chunk.Data = append(chunk.Data, args.Data...)
-
-	// Adds chunk in chunk server for data that overflowed
-	if len(chunk.Data) > helper.CHUNK_SIZE {
-		var exceedingData []byte
-		for _, num := range chunk.Data {
-			if len(chunk.Data) < helper.CHUNK_SIZE {
-				// Add the number to the exceedingNumbers slice if it's within the first 64 elements.
-				exceedingData = append(exceedingData, num)
-			}
-		}
-
-		chunk.Data = chunk.Data[:helper.CHUNK_SIZE]
-		exceedingData = chunk.Data[helper.CHUNK_SIZE:]
-
-		newChunk = models.Chunk{
-			ChunkHandle: args.Handle,
-			ChunkIndex:  chunk.ChunkIndex + 1,
-			Data:        exceedingData,
-		}
-
-		// cs.AddChunk(newChunk, nil)
+		// Create new chunk for next iteration
+		index++
+		chunk = models.Chunk{ChunkHandle: args.Handle, ChunkIndex: index, Data: []byte{}}
 
 		// Updates Master for new last index entry
 		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
@@ -177,7 +164,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 			log.Println("[ChunkServer] Dialing error: ", err)
 		}
 
-		err = client.Call("MasterNode.Replication", newChunk, &successResponse)
+		err = client.Call("MasterNode.Replication", chunk, &successResponse)
 		if err != nil {
 			log.Println("[ChunkServer] Error calling RPC method: ", err)
 		}
@@ -185,6 +172,9 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 
 		log.Println("[ChunkServer] Successful Replication: ", successResponse)
 	}
+
+	// Append remaining data to last chunk
+	chunk.Data = append(chunk.Data, args.Data...)
 
 	*reply = chunk
 	return nil
