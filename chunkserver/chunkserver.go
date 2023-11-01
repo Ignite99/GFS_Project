@@ -116,15 +116,26 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 }
 
 // client to call this API when it wants to read data
-func (cs *ChunkServer) Read(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
-	// will add more logic here
-	ch := chunkMetadata.Handle
-	for _, chunk := range cs.storage {
-		if chunk.ChunkHandle == ch {
-			fmt.Println(chunk.Data)
-			*reply = chunk
+func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
+	var dataStream []byte
+
+	chunkUUID := args.ChunkMetadata.Handle
+
+	if args.ChunkIndex1 == args.ChunkIndex2 {
+		for _, chunk := range cs.storage {
+			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex == args.ChunkIndex1 {
+				dataStream = append(dataStream, chunk.Data...)
+			}
+		}
+	} else {
+		for _, chunk := range cs.storage {
+			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex >= args.ChunkIndex1 && chunk.ChunkIndex <= args.ChunkIndex2 {
+				dataStream = append(dataStream, chunk.Data...)
+			}
 		}
 	}
+
+	*reply = dataStream
 
 	return nil
 }
@@ -212,7 +223,7 @@ func runChunkServer(portNumber int) {
 
 	// initialize chunk server instance
 	chunkServerInstance := &ChunkServer{
-		storage: make([]models.Chunk, helper.MAX_CHUNK_AMT),
+		storage: make([]models.Chunk, 0),
 		portNum: portNumber,
 	}
 	rpc.Register(chunkServerInstance)
@@ -245,6 +256,9 @@ func main() {
 
 	flag.IntVar(&portNumber, "portNumber", helper.CHUNK_SERVER_START_PORT, "Port number of Chunk Server.")
 	flag.Parse()
+
+	// go run chunkserver.go --portNumber 8090-8095
+	// Port number arguments
 	runChunkServer(portNumber)
 }
 

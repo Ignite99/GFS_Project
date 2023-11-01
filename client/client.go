@@ -44,27 +44,41 @@ func RequestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata 
 	}
 	var reply models.ChunkMetadata
 	client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
+
+	if chunkIndex != reply.LastIndex {
+		log.Println("Last Index in arguments is incorrect LastIndex of chunkServer")
+		log.Println("The last index of chunkServer is: ", reply.LastIndex)
+	}
+
 	return reply
 }
 
 // Read from a chunk in the chunk server
-func ReadChunk(metadata models.ChunkMetadata) []byte {
-	client := Dial(helper.CHUNK_SERVER_START_PORT)
+func ReadChunks(metadata models.ChunkMetadata, index1 int, index2 int) []byte {
+	client := Dial(metadata.Location)
 	defer client.Close()
 
-	var reply models.Chunk
-	err := client.Call("ChunkServer.Read", metadata, &reply)
+	var reply []byte
+
+	query := models.ReadData{
+		ChunkIndex1:   index1,
+		ChunkIndex2:   index2,
+		ChunkMetadata: metadata,
+	}
+
+	err := client.Call("ChunkServer.ReadRange", query, &reply)
 	if err != nil {
 		log.Println("[Client] Error calling RPC method: ", err)
 	}
-	fmt.Println("Received chunk: ", string(reply.Data))
 
-	return reply.Data
+	log.Println("Received chunk: ", string(reply))
+
+	return reply
 }
 
 /* =============================== File-related functions =============================== */
 
-func ReadFile(filename string) {
+func ReadFile(filename string, firstIndex int, LastIndex int) {
 	// Compute number of chunks
 	fi, err := os.Stat(filename)
 	if err != nil {
@@ -74,7 +88,7 @@ func ReadFile(filename string) {
 
 	// Read each chunk
 	chunkMetadata := RequestChunkLocation(filename, chunks)
-	ReadChunk(chunkMetadata)
+	ReadChunks(chunkMetadata, firstIndex, LastIndex)
 	// TODO: update local copy here
 }
 
@@ -196,8 +210,8 @@ func GenerateData(size int) []byte {
 }
 
 func ComputeNumberOfChunks(size int) int {
-	chunks := size/helper.CHUNK_SIZE
-	if (size % helper.CHUNK_SIZE > 0) {
+	chunks := size / helper.CHUNK_SIZE
+	if size%helper.CHUNK_SIZE > 0 {
 		chunks++
 	}
 	return chunks
@@ -208,14 +222,14 @@ func ComputeNumberOfChunks(size int) int {
 // Start the client, to be called from main.go
 func StartClients() {
 	//runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
-	runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-	//runClient(Task{Operation: READ, Filename: FILE1})
-	//runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
+	// runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+	runClient(Task{Operation: READ, Filename: FILE1})
+	runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
 }
 
 func runClient(t Task) {
 	if t.Operation == READ {
-		ReadFile(t.Filename)
+		ReadFile(t.Filename, 1, 3)
 		return
 	}
 
@@ -226,6 +240,7 @@ func runClient(t Task) {
 
 	if t.Operation == WRITE {
 		CreateFile(t.Filename, t.DataSize)
+		return
 	}
 }
 

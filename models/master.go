@@ -12,8 +12,9 @@ type ChunkLocationArgs struct {
 }
 
 type ChunkMetadata struct {
-	Handle   uuid.UUID
-	Location int
+	Handle    uuid.UUID
+	Location  int
+	LastIndex int
 }
 
 type ChunkServerState struct {
@@ -30,12 +31,13 @@ type CreateData struct {
 	NumberOfChunks int
 }
 
-/* =========== Read ===========*/
+/* =========== CreateFile ===========*/
 
 /* =========== Read ===========*/
 
 type ReadData struct {
-	ChunkIndex    int
+	ChunkIndex1   int
+	ChunkIndex2   int
 	ChunkMetadata ChunkMetadata
 }
 

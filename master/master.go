@@ -55,8 +55,12 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	}
 
 	log.Println("Send heartbeat request to chunk")
-	client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
-	log.Println("Received heartbeat reply from Chunk Server with info:", reply)
+	err = client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
+	if err != nil {
+		log.Println("Error calling RPC method: ", err)
+	}
+
+	log.Printf("Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
 	return reply
 }
 
@@ -147,10 +151,10 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	// The master node receives the client's request for appending data to the file and processes it.
 	// It verifies that the file exists and handles any naming conflicts or errors.
 	appendFile, ok := mn.Chunks.Load(args.Filename)
-	if !ok {
-		// If cannot be found generate new file, call create file
-		// mn.CreateFile()
-	}
+	// if !ok {
+	// 	// If cannot be found generate new file, call create file
+	// 	// mn.CreateFile()
+	// }
 
 	// Provides the client with information about the last chunk of the file
 	chunkMetadata, ok := appendFile.(models.ChunkMetadata)
@@ -170,15 +174,17 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 	uuidNew := uuid.NewV4()
 
 	metadata := models.ChunkMetadata{
-		Handle:   uuidNew,
-		Location: args.NumberOfChunks,
+		Handle:    uuidNew,
+		Location:  helper.CHUNK_SERVER_START_PORT,
+		LastIndex: args.NumberOfChunks,
 	}
 
 	mn.Chunks.Store(args.Append.Filename, metadata)
 
 	*reply = models.ChunkMetadata{
-		Handle:   uuidNew,
-		Location: args.NumberOfChunks,
+		Handle:    uuidNew,
+		Location:  metadata.Location,
+		LastIndex: metadata.LastIndex,
 	}
 	return nil
 }
@@ -230,9 +236,9 @@ func (mn *MasterNode) InitializeChunkInfo() {
 	// Handle is the uuid of the metadata that has been assigned to the chunk
 	// Location is the chunkServer that it is located in
 	metadata1 := models.ChunkMetadata{
-		Handle: uuid1,
-		// Last index of file, based on ChunkIndex in models.Chunk
-		Location: 3,
+		Handle:    uuid1,
+		Location:  8090,
+		LastIndex: 3,
 	}
 
 	mn.Chunks.Store("file1.txt", metadata1)
