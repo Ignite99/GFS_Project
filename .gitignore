@@ -11,3 +11,4 @@ CTestTestfile.cmake
 _deps
 
 logs/master_node.log
+client/file*.txt
