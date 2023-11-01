@@ -3,6 +3,8 @@ package main
 import (
 	"math/rand"
 	"time"
+	"os"
+	"log"
 
 	"github.com/sutd_gfs_project/client"
 )
@@ -36,27 +38,33 @@ func generateData(size int) []byte {
 
 func runClient(t Task) {
 	if t.Operation == READ {
-		client.ReadFile(t.Filename)
+		client.ReadFile(t.Filename, 1, 3)
 		return
 	}
 
 	if t.Operation == APPEND {
-		data := GenerateData(t.DataSize)
+		data := generateData(t.DataSize)
 		client.AppendToFile(t.Filename, data)
 		return
 	}
 
 	if t.Operation == WRITE {
-		data := GenerateData(t.DataSize)
+		data := generateData(t.DataSize)
 		client.CreateFile(t.Filename, data)
 	}
 }
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+	logfile, err := os.OpenFile("logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Println("[Client] Error opening log file: ", err)
+	}
+	defer logfile.Close()
+	log.SetOutput(logfile)
 
-	runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
-	runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+	//runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
+	//runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 	runClient(Task{Operation: READ, Filename: FILE1})
-	runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
+	//runClient(Task{Operation: APPEND, Filename: FILE1, DataSize: 10240})
 }

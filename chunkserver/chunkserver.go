@@ -42,7 +42,7 @@ func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID, chunkLocation int) models
 func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) error {
 	log.Println("============== ADDING CHUNK ==============")
 	//log.Println("Chunk added: ", args)
-	log.Println("Chunk added: ", fmt.Sprintf("{%v %d %s}", args.ChunkHandle, args.ChunkIndex, helper.TruncateOutput(args.Data)))
+	log.Println("[ChunkServer] Chunk added: ", fmt.Sprintf("{%v %d %s}", args.ChunkHandle, args.ChunkIndex, helper.TruncateOutput(args.Data)))
 	cs.storage = append(cs.storage, args)
 	index := len(cs.storage)
 
@@ -55,12 +55,12 @@ func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) er
 
 func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.SuccessJSON) error {
 	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
-	//log.Println("Chunk added: ", args) //TODO: truncate output to logfile
-	logMessage := "Chunks added: "
+	//log.Println("Chunk added: ", args)
+	logMessage := "[ChunkServer] Chunks added: "
 
 	for _, c := range args {
 		cs.storage = append(cs.storage, c)
-		logMessage += fmt.Sprintf("{%v %d %s}\n", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
+		logMessage += fmt.Sprintf("\n{%v %d %s}", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
 	}
 	log.Println(logMessage)
 
@@ -145,14 +145,14 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	var newChunk models.Chunk
 	var successResponse models.SuccessJSON
 
-	log.Println("Appending starting")
+	log.Println("[ChunkServer] Appending starting")
 
 	chunk := cs.GetChunk(args.Handle, args.Location)
 	chunk.Data = append(chunk.Data, args.Data...)
 
 	// Adds chunk in chunk server for data that overflowed
 	if len(chunk.Data) > helper.CHUNK_SIZE {
-		exceedingData := []byte{}
+		var exceedingData []byte
 		for _, num := range chunk.Data {
 			if len(chunk.Data) < helper.CHUNK_SIZE {
 				// Add the number to the exceedingNumbers slice if it's within the first 64 elements.
@@ -174,16 +174,16 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 		// Updates Master for new last index entry
 		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 		if err != nil {
-			log.Println("Dialing error: ", err)
+			log.Println("[ChunkServer] Dialing error: ", err)
 		}
 
 		err = client.Call("MasterNode.Replication", newChunk, &successResponse)
 		if err != nil {
-			log.Println("Error calling RPC method: ", err)
+			log.Println("[ChunkServer] Error calling RPC method: ", err)
 		}
 		client.Close()
 
-		log.Println("Successful Replication: ", successResponse)
+		log.Println("[ChunkServer] Successful Replication: ", successResponse)
 	}
 
 	*reply = chunk
@@ -216,7 +216,7 @@ func (cs *ChunkServer) ReceiveLease() {
 func runChunkServer(portNumber int) {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatal("Error opening log file:", err)
+		log.Fatal("[ChunkServer] Error opening log file:", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
@@ -235,16 +235,16 @@ func runChunkServer(portNumber int) {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(portNumber))
 
 	if err != nil {
-		log.Fatal("Error starting RPC server", err)
+		log.Fatal("[ChunkServer] Error starting RPC server", err)
 	}
 	defer listener.Close()
 
-	log.Printf("RPC listening on port %d", portNumber)
+	log.Printf("[ChunkServer] RPC listening on port %d", portNumber)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Fatal("Error accepting connection", err)
+			log.Fatal("[ChunkServer] Error accepting connection", err)
 		}
 		// serve incoming RPC requests
 		go rpc.ServeConn(conn)
@@ -297,15 +297,15 @@ func (cs *ChunkServer) Registration(portNum int) {
 
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
-		log.Println("Dialing error: ", err)
+		log.Println("[ChunkServer] Dialing error: ", err)
 	}
 
 	err = client.Call("MasterNode.RegisterChunkServers", portNum, &response)
 	if err != nil {
-		log.Println("Error calling RPC method: ", err)
+		log.Println("[ChunkServer] Error calling RPC method: ", err)
 	}
 	client.Close()
 
-	log.Printf("ChunkServer on port: %d. Registration Response %s\n", portNum, response)
+	log.Printf("[ChunkServer] ChunkServer on port: %d. Registration Response %s\n", portNum, response)
 
 }

@@ -23,11 +23,14 @@ func requestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata 
 		ChunkIndex: chunkIndex,
 	}
 	var reply models.ChunkMetadata
-	client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
+	err := client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
+	if err != nil {
+		log.Fatalln("[Client] Error calling RPC method:", err)
+	}
 
 	if chunkIndex != reply.LastIndex {
-		log.Println("Last Index in arguments is incorrect LastIndex of chunkServer")
-		log.Println("The last index of chunkServer is: ", reply.LastIndex)
+		log.Println("[Client] Last Index in arguments is incorrect LastIndex of chunkServer")
+		log.Println("[Client] The last index of chunkServer is:", reply.LastIndex)
 	}
 
 	return reply
@@ -48,10 +51,10 @@ func readChunks(metadata models.ChunkMetadata, index1 int, index2 int) []byte {
 
 	err := client.Call("ChunkServer.ReadRange", query, &reply)
 	if err != nil {
-		log.Println("[Client] Error calling RPC method: ", err)
+		log.Fatalln("[Client] Error calling RPC method:", err)
 	}
 
-	log.Println("Received chunk: ", string(reply))
+	log.Println("[Client] Received chunk:", helper.TruncateOutput(reply))
 
 	return reply
 }
@@ -62,12 +65,13 @@ func ReadFile(filename string, firstIndex int, LastIndex int) {
 	// Compute number of chunks
 	fi, err := os.Stat(filename)
 	if err != nil {
-		log.Println("[Client] Error acquiring file information: ", err)
+		log.Fatalln("[Client] Error acquiring file information:", err)
 	}
 	chunks := computeNumberOfChunks(int(fi.Size()))
 
 	// Read each chunk
 	chunkMetadata := requestChunkLocation(filename, chunks)
+	//chunkMetadata.Handle = helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
 	readChunks(chunkMetadata, firstIndex, LastIndex)
 	// TODO: update local copy here
 }
@@ -83,7 +87,7 @@ func AppendToFile(filename string, data []byte) {
 	mnClient := dial(helper.MASTER_SERVER_PORT)
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
-		log.Println("[Client] Error calling RPC method: ", err)
+		log.Fatalln("[Client] Error calling RPC method:", err)
 	}
 	mnClient.Close()
 
@@ -92,23 +96,23 @@ func AppendToFile(filename string, data []byte) {
 	csClient := dial(helper.CHUNK_SERVER_START_PORT)
 	err = csClient.Call("ChunkServer.Append", appendReply, &reply)
 	if err != nil {
-		log.Println("[Client] Error calling RPC method: ", err)
+		log.Fatalln("[Client] Error calling RPC method:", err)
 	}
 	csClient.Close()
-	log.Println("[Client] Successfully appended payload: ", helper.TruncateOutput(data))
+	log.Println("[Client] Successfully appended payload:", helper.TruncateOutput(data))
 
 	// Append data to local copy of file
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Println("[Client] Error opening file: ", err)
+		log.Fatalln("[Client] Error opening file:", err)
 	}
 	_, err = f.Write(data)
 	if err != nil {
-		log.Println("[Client] Error writing to file: ", err)
+		log.Println("[Client] Error writing to file:", err)
 	}
 	err = f.Close()
 	if err != nil {
-		log.Println("[Client] Error closing file: ", err)
+		log.Println("[Client] Error closing file:", err)
 	}
 }
 
@@ -118,7 +122,7 @@ func CreateFile(filename string, data []byte) {
 	// Create the file locally
 	err := os.WriteFile(filename, data, 0644)
 	if err != nil {
-		log.Println("[Client] Error writing to file: ", err)
+		log.Println("[Client] Error writing to file:", err)
 	}
 
 	// Compute number of chunks and prepare args
@@ -133,7 +137,7 @@ func CreateFile(filename string, data []byte) {
 	mnClient := dial(helper.MASTER_SERVER_PORT)
 	err = mnClient.Call("MasterNode.CreateFile", createArgs, &metadata)
 	if err != nil {
-		log.Println("[Client] Error calling RPC method: ", err)
+		log.Fatalln("[Client] Error calling RPC method:", err)
 	}
 	mnClient.Close()
 
@@ -161,19 +165,19 @@ func CreateFile(filename string, data []byte) {
 	csClient := dial(helper.CHUNK_SERVER_START_PORT)
 	err = csClient.Call("ChunkServer.CreateFileChunks", chunkArray, &reply)
 	if err != nil {
-		log.Println("[Client] Error calling RPC method: ", err)
+		log.Fatalln("[Client] Error calling RPC method:", err)
 	}
 	csClient.Close()
 
-	log.Println("[Client] Successfully created file in chunkserver: ", reply)
+	log.Println("[Client] Successfully created file in chunkserver:", reply)
 }
 
 /* =============================== Helper functions =============================== */
 
 func dial(address int) *rpc.Client {
-	client, err := rpc.dial("tcp", "localhost:"+strconv.Itoa(address))
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(address))
 	if err != nil {
-		log.Println("[Client] Dialing error", err)
+		log.Fatalln("[Client] Error connecting to RPC server:", err)
 	}
 	return client
 }
@@ -189,7 +193,7 @@ func computeNumberOfChunks(size int) int {
 func main () {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		log.Println("[Client] Error opening log file: ", err)
+		log.Fatalln("[Client] Error opening log file:", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
