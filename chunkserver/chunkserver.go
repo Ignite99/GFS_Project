@@ -56,6 +56,23 @@ func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) er
 	return nil
 }
 
+func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.SuccessJSON) error {
+	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
+	log.Println("Chunk added: ", args)
+
+	for i := 0; i < len(args); i++ {
+		cs.storage = append(cs.storage, args[i])
+	}
+
+	index := len(cs.storage)
+
+	*reply = models.SuccessJSON{
+		FileID:    args[0].ChunkHandle,
+		LastIndex: index,
+	}
+	return nil
+}
+
 // update value of chunk in storage
 func (cs *ChunkServer) UpdateChunk(args models.Chunk, reply *models.Chunk) error {
 	var updatedChunk models.Chunk
@@ -132,7 +149,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 		}
 
 		chunk.Data = chunk.Data[:64]
-		exceedingData := chunk.Data[64:]
+		exceedingData = chunk.Data[64:]
 
 		newChunk = models.Chunk{
 			ChunkHandle: args.Handle,
@@ -187,7 +204,7 @@ func (cs *ChunkServer) ReceiveLease() {
 func runChunkServer() {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatal("Error opening log file:", err)
+		log.Println("Error opening log file:", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
@@ -201,7 +218,7 @@ func runChunkServer() {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.CHUNK_SERVER_START_PORT))
 
 	if err != nil {
-		log.Fatal("Error starting RPC server", err)
+		log.Println("Error starting RPC server", err)
 	}
 	defer listener.Close()
 
@@ -210,7 +227,7 @@ func runChunkServer() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Fatal("Error accepting connection", err)
+			log.Println("Error accepting connection", err)
 		}
 		// serve incoming RPC requests
 		go rpc.ServeConn(conn)

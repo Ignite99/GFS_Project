@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
@@ -83,7 +83,6 @@ func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) 
 	var response models.ChunkMetadata
 	var filename string
 
-	fmt.Println("======== Starting Replication ========")
 	aliveNodes := make(map[int]string)
 
 	// Find all alive nodes
@@ -122,6 +121,8 @@ func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) 
 		}
 	}
 
+	log.Println("Replication complete to all alive nodes: ", aliveNodes)
+
 	mn.Chunks.Range(func(key, value interface{}) bool {
 		if metadata, ok := value.(models.ChunkMetadata); ok {
 			if metadata.Handle == args.ChunkHandle {
@@ -133,6 +134,8 @@ func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) 
 	})
 
 	mn.Chunks.Store(filename, response)
+
+	log.Println("MasterNode updated of new last index: ", response)
 
 	*reply = output
 	return nil
@@ -146,7 +149,7 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	appendFile, ok := mn.Chunks.Load(args.Filename)
 	if !ok {
 		// If cannot be found generate new file, call create file
-		mn.CreateFile()
+		// mn.CreateFile()
 	}
 
 	// Provides the client with information about the last chunk of the file
@@ -162,8 +165,22 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	return nil
 }
 
-func (mn *MasterNode) CreateFile() {
+func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMetadata) error {
 
+	uuidNew := uuid.NewV4()
+
+	metadata := models.ChunkMetadata{
+		Handle:   uuidNew,
+		Location: args.NumberOfChunks,
+	}
+
+	mn.Chunks.Store(args.Append.Filename, metadata)
+
+	*reply = models.ChunkMetadata{
+		Handle:   uuidNew,
+		Location: args.NumberOfChunks,
+	}
+	return nil
 }
 
 func (mn *MasterNode) CreateLease() {
@@ -173,7 +190,7 @@ func (mn *MasterNode) CreateLease() {
 func main() {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatal("Error opening log file:", err)
+		log.Println("Error opening log file:", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
@@ -185,7 +202,7 @@ func main() {
 
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
-		log.Fatal("Error starting RPC server:", err)
+		log.Println("Error starting RPC server:", err)
 	}
 	defer listener.Close()
 

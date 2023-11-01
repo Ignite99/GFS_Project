@@ -8,3 +8,8 @@ type Chunk struct {
 	ChunkIndex  int
 	Data        []byte
 }
+
+type ReadDataStream struct {
+	ChunkID uuid.UUID
+	Data    []int
+}

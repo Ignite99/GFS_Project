@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/rpc"
 
@@ -27,5 +26,5 @@ func Test() {
 		log.Fatal("Error calling RPC method: ", err)
 	}
 
-	fmt.Printf("Handle: %s, Location: %d\n", reply.Handle, reply.Location)
+	log.Printf("Handle: %s, Location: %d\n", reply.Handle, reply.Location)
 }

@@ -22,6 +22,24 @@ type ChunkServerState struct {
 	Node          int
 }
 
+/* =========== CreateFile ===========*/
+
+type CreateData struct {
+	Append         Append
+	NumberOfChunks int
+}
+
+/* =========== Read ===========*/
+
+/* =========== Read ===========*/
+
+type ReadData struct {
+	ChunkIndex    int
+	ChunkMetadata ChunkMetadata
+}
+
+/* =========== Read ===========*/
+
 /* =========== Replication & Append ===========*/
 type SuccessJSON struct {
 	FileID    uuid.UUID
