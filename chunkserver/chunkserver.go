@@ -15,6 +15,8 @@ import (
 	"github.com/sutd_gfs_project/models"
 )
 
+var portNumber int
+
 type ChunkServer struct {
 	storage []models.Chunk
 	portNum int
@@ -54,12 +56,39 @@ func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) er
 }
 
 func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.SuccessJSON) error {
+	var successResponse models.SuccessJSON
+
 	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
 	//log.Println("Chunk added: ", args) //TODO: truncate output to logfile
 	logMessage := "Chunks added: "
 
 	for _, c := range args {
 		cs.storage = append(cs.storage, c)
+
+		newChunk := models.Chunk{
+			ChunkHandle: c.ChunkHandle,
+			ChunkIndex:  c.ChunkIndex,
+			Data:        c.Data,
+		}
+
+		replicateChunk := models.Replication{
+			Port:  portNumber,
+			Chunk: newChunk,
+		}
+
+		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+		if err != nil {
+			log.Println("Dialing error: ", err)
+		}
+
+		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
+		if err != nil {
+			log.Println("Error calling RPC method: ", err)
+		}
+		client.Close()
+
+		log.Println("Successful Replication: ", successResponse)
+
 		logMessage += fmt.Sprintf("{%v %d %s}\n", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
 	}
 	log.Println(logMessage)
@@ -169,6 +198,11 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 			Data:        exceedingData,
 		}
 
+		replicateChunk := models.Replication{
+			Port:  portNumber,
+			Chunk: newChunk,
+		}
+
 		// cs.AddChunk(newChunk, nil)
 
 		// Updates Master for new last index entry
@@ -177,7 +211,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 			log.Println("Dialing error: ", err)
 		}
 
-		err = client.Call("MasterNode.Replication", newChunk, &successResponse)
+		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
 		if err != nil {
 			log.Println("Error calling RPC method: ", err)
 		}
@@ -214,7 +248,7 @@ func (cs *ChunkServer) ReceiveLease() {
 
 // command or API call for MAIN function to run chunk server
 func runChunkServer(portNumber int) {
-	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	logfile, err := os.OpenFile("../logs/chunkServer_"+strconv.Itoa(portNumber)+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal("Error opening log file:", err)
 	}
@@ -253,8 +287,6 @@ func runChunkServer(portNumber int) {
 
 // starting function for this file --> will be moved to main.go
 func main() {
-	var portNumber int
-
 	flag.IntVar(&portNumber, "portNumber", helper.CHUNK_SERVER_START_PORT, "Port number of Chunk Server.")
 	flag.Parse()
 

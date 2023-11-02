@@ -1,6 +1,7 @@
 package main // should be client, set temporarily as main so it can be run
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -45,7 +46,7 @@ func RequestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata 
 	var reply models.ChunkMetadata
 	client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
 
-	if chunkIndex != reply.LastIndex {
+	if chunkIndex > reply.LastIndex {
 		log.Println("Last Index in arguments is incorrect LastIndex of chunkServer")
 		log.Println("The last index of chunkServer is: ", reply.LastIndex)
 	}
@@ -108,6 +109,8 @@ func AppendToFile(filename string, size int) {
 	}
 	mnClient.Close()
 
+	fmt.Println("Masternode Append works")
+
 	// Append data to chunks
 	var reply models.Chunk
 	csClient := Dial(helper.CHUNK_SERVER_START_PORT)
@@ -133,7 +136,7 @@ func AppendToFile(filename string, size int) {
 	}
 }
 
-func CreateFile(filename string, filesize int) {
+func CreateFile(filename string, filesize int) error {
 	fmt.Println("CREATING FILE")
 
 	// Create the file locally
@@ -158,6 +161,11 @@ func CreateFile(filename string, filesize int) {
 		log.Println("[Client] Error calling RPC method: ", err)
 	}
 	mnClient.Close()
+
+	if metadata.Location == 0 {
+		log.Println("[Client] File already exists in chunkserver")
+		return errors.New("file already exists in chunkserver")
+	}
 
 	// Split file data into chunks and prepare args
 	// Reply has the chunk uuid and location(last index)
@@ -188,6 +196,8 @@ func CreateFile(filename string, filesize int) {
 	csClient.Close()
 
 	log.Println("[Client] Successfully created file in chunkserver: ", reply)
+
+	return nil
 }
 
 /* =============================== Helper functions =============================== */
@@ -221,6 +231,8 @@ func ComputeNumberOfChunks(size int) int {
 
 // Start the client, to be called from main.go
 func StartClients() {
+	log.Println("=============================== Starting tasks ===============================")
+
 	//runClient(Task{Operation: WRITE, Filename: FILE1, DataSize: 65536})
 	runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 	runClient(Task{Operation: READ, Filename: FILE1})
@@ -245,7 +257,7 @@ func runClient(t Task) {
 }
 
 func main() {
-	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	logfile, err := os.OpenFile("../logs/client.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Println("[Client] Error opening log file: ", err)
 	}

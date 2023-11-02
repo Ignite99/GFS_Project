@@ -60,8 +60,8 @@ type AppendData struct {
 }
 
 type Replication struct {
-	Filename string
-	Chunk    Chunk
+	Port  int
+	Chunk Chunk
 }
 
 type ReplicationResponse struct {
@@ -70,11 +70,3 @@ type ReplicationResponse struct {
 }
 
 /* =========== Replication & Append ===========*/
-
-/* =========== Registration ===========*/
-
-type Registration struct {
-	Port int
-}
-
-/* =========== Registration ===========*/

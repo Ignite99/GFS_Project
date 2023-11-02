@@ -78,10 +78,12 @@ func HeartBeatTracker() {
 
 // Replicates chunk to all existing chunkServers
 // Since all chunkServers anytime they add a chunk they should just replicate
-func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) error {
+func (mn *MasterNode) Replication(args models.Replication, reply *models.SuccessJSON) error {
 	var output models.SuccessJSON
 	var response models.ChunkMetadata
 	var filename string
+
+	log.Println("Replication started")
 
 	aliveNodes := make(map[int]string)
 
@@ -97,27 +99,31 @@ func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) 
 
 	// Copies data to all alive nodes at that point
 	for port, _ := range aliveNodes {
-		client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
-		if err != nil {
-			log.Println("Error connecting to RPC server:", err)
-		}
+		if port != args.Port {
+			fmt.Println("Replicating to port: ", port)
 
-		addChunkArgs := models.Chunk{
-			ChunkHandle: args.ChunkHandle,
-			ChunkIndex:  args.ChunkIndex,
-			Data:        args.Data,
-		}
+			client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
+			if err != nil {
+				log.Println("Error connecting to RPC server:", err)
+			}
 
-		// Reply with file uuid & last index of chunk
-		err = client.Call("ChunkServer.AddChunk", addChunkArgs, &output)
-		if err != nil {
-			log.Println("Error calling RPC method: ", err)
-		}
-		client.Close()
+			addChunkArgs := models.Chunk{
+				ChunkHandle: args.Chunk.ChunkHandle,
+				ChunkIndex:  args.Chunk.ChunkIndex,
+				Data:        args.Chunk.Data,
+			}
 
-		response = models.ChunkMetadata{
-			Handle:   output.FileID,
-			Location: output.LastIndex,
+			// Reply with file uuid & last index of chunk
+			err = client.Call("ChunkServer.AddChunk", addChunkArgs, &output)
+			if err != nil {
+				log.Println("Error calling RPC method: ", err)
+			}
+			client.Close()
+
+			response = models.ChunkMetadata{
+				Handle:   output.FileID,
+				Location: output.LastIndex,
+			}
 		}
 	}
 
@@ -125,7 +131,7 @@ func (mn *MasterNode) Replication(args models.Chunk, reply *models.SuccessJSON) 
 
 	mn.Chunks.Range(func(key, value interface{}) bool {
 		if metadata, ok := value.(models.ChunkMetadata); ok {
-			if metadata.Handle == args.ChunkHandle {
+			if metadata.Handle == args.Chunk.ChunkHandle {
 				filename = key.(string)
 				return false
 			}
@@ -162,21 +168,29 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 
 func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMetadata) error {
 
-	uuidNew := uuid.NewV4()
+	if _, exists := mn.ChunkInfo[args.Append.Filename]; !exists {
+		log.Println("Key does not exist in the map")
 
-	metadata := models.ChunkMetadata{
-		Handle:    uuidNew,
-		Location:  helper.CHUNK_SERVER_START_PORT,
-		LastIndex: args.NumberOfChunks,
+		uuidNew := uuid.NewV4()
+
+		metadata := models.ChunkMetadata{
+			Handle:    uuidNew,
+			Location:  helper.CHUNK_SERVER_START_PORT,
+			LastIndex: args.NumberOfChunks,
+		}
+
+		mn.ChunkInfo[args.Append.Filename] = metadata
+
+		*reply = models.ChunkMetadata{
+			Handle:    uuidNew,
+			Location:  metadata.Location,
+			LastIndex: metadata.LastIndex,
+		}
+		return nil
 	}
 
-	mn.ChunkInfo[args.Append.Filename] = metadata
+	*reply = models.ChunkMetadata{}
 
-	*reply = models.ChunkMetadata{
-		Handle:    uuidNew,
-		Location:  metadata.Location,
-		LastIndex: metadata.LastIndex,
-	}
 	return nil
 }
 
