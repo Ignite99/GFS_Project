@@ -119,7 +119,7 @@ func AppendToFile(filename string, data []byte) {
 	}
 }
 
-func CreateFile(filename string, data []byte) {
+func CreateFile(filename string, data []byte) error {
 	fmt.Println("CREATING FILE")
 
 	// Create the file locally
@@ -178,6 +178,8 @@ func CreateFile(filename string, data []byte) {
 	csClient.Close()
   
 	log.Println("[Client] Successfully created file in chunkserver:", reply)
+
+	return nil
 }
 
 /* =============================== Helper functions =============================== */

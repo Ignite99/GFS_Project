@@ -78,18 +78,18 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 
 		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 		if err != nil {
-			log.Println("Dialing error: ", err)
+			log.Println("[ChunkServer] Dialing error: ", err)
 		}
 
 		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
 		if err != nil {
-			log.Println("Error calling RPC method: ", err)
+			log.Println("[ChunkServer] Error calling RPC method: ", err)
 		}
 		client.Close()
 
-		log.Println("Successful Replication: ", successResponse)
+		log.Println("[ChunkServer] Successful Replication: ", successResponse)
 
-		logMessage += fmt.Sprintf("{%v %d %s}\n", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
+		logMessage += fmt.Sprintf("\n{%v %d %s}", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
 	}
 	log.Println(logMessage)
 
@@ -176,75 +176,43 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	index := chunk.ChunkIndex
 	chunkSpace := helper.CHUNK_SIZE - len(chunk.Data)
   
-  // Append as much as possible to last chunk
-  if len(args.Data) <= chunkSpace {
-    chunk.Data = append(chunk.Data, args.Data...)
-  } else {
-    chunk.Data = append(chunk.Data, args.Data[:chunkSpace]...)
-    args.Data = args.Data[chunkSpace:]
-    chunkSpace = helper.CHUNK_SIZE
-    
-    // Make new chunks until all data is appended
-    for len(args.Data) > 0 {
-      index++
-      chunk = models.Chunk{ChunkHandle: args.Handle, ChunkIndex: index, Data: []byte{}}
-      if len(args.Data) <= chunkSpace {
-        chunk.Data = append(chunk.Data, args.Data...)
-        args.Data = nil
-      } else {
-        chunk.Data = append(chunk.Data, args.Data[:chunkSpace]...)
-        args.Data = args.Data[chunkSpace:]
-      }
-      
-      replicateChunk := models.Replication{Port: portNumber, Chunk: chunk}
-
-      // Updates Master for new last index entry
-      client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
-      if err != nil {
-        log.Println("[ChunkServer] Dialing error: ", err)
-      }
-
-      err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
-      if err != nil {
-        log.Println("[ChunkServer] Error calling RPC method: ", err)
-      }
-      client.Close()
-
-      log.Println("[ChunkServer] Successful Replication: ", successResponse)
-    }
-  }
-  
-  /*
-	// Make new chunks while data size is greater than chunk size
-	for len(args.Data) > chunkSpace {
-		// Append as much data to last chunk as possible
+	// Append as much as possible to last chunk
+	if len(args.Data) <= chunkSpace {
+		chunk.Data = append(chunk.Data, args.Data...)
+	} else {
 		chunk.Data = append(chunk.Data, args.Data[:chunkSpace]...)
 		args.Data = args.Data[chunkSpace:]
 		chunkSpace = helper.CHUNK_SIZE
 
-		// Create new chunk for next iteration
-		index++
-		chunk = models.Chunk{ChunkHandle: args.Handle, ChunkIndex: index, Data: []byte{}}
-    replicateChunk := models.Replication{Port: portNumber, Chunk: chunk}
+		// Make new chunks until all data is appended
+		for len(args.Data) > 0 {
+			index++
+			chunk = models.Chunk{ChunkHandle: args.ChunkMetadata.Handle, ChunkIndex: index, Data: []byte{}}
+			if len(args.Data) <= chunkSpace {
+				chunk.Data = append(chunk.Data, args.Data...)
+				args.Data = nil
+			} else {
+				chunk.Data = append(chunk.Data, args.Data[:chunkSpace]...)
+				args.Data = args.Data[chunkSpace:]
+			}
 
-		// Updates Master for new last index entry
-		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
-		if err != nil {
-			log.Println("[ChunkServer] Dialing error: ", err)
+			replicateChunk := models.Replication{Port: portNumber, Chunk: chunk}
+
+			// Updates Master for new last index entry
+			client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
+			if err != nil {
+				log.Println("[ChunkServer] Dialing error: ", err)
+			}
+
+			err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
+			if err != nil {
+				log.Println("[ChunkServer] Error calling RPC method: ", err)
+			}
+			client.Close()
+
+			log.Println("[ChunkServer] Successful Replication: ", successResponse)
 		}
-
-		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
-		if err != nil {
-			log.Println("[ChunkServer] Error calling RPC method: ", err)
-		}
-		client.Close()
-
-		log.Println("[ChunkServer] Successful Replication: ", successResponse)
 	}
-  
-  // Append remaining data to last chunk
-	chunk.Data = append(chunk.Data, args.Data...)
-  */
 
 	*reply = chunk
 	return nil

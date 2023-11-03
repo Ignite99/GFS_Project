@@ -65,6 +65,6 @@ func main() {
 
 	runClient(Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 	//runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-	//runClient(Task{Operation: READ, Filename: FILE2})
+	runClient(Task{Operation: READ, Filename: FILE2})
 	runClient(Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 }

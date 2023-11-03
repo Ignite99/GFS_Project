@@ -83,7 +83,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 	var response models.ChunkMetadata
 	var filename string
 
-	log.Println("Replication started")
+	log.Println("[Master] Replication started")
 
 	aliveNodes := make(map[int]string)
 
@@ -100,7 +100,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 	// Copies data to all alive nodes at that point
 	for port, _ := range aliveNodes {
 		if port != args.Port {
-			fmt.Println("[Master] Replicating to port: ", port)
+			fmt.Println("Replicating to port: ", port)
 
 			client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 			if err != nil {
