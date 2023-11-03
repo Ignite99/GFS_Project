@@ -40,7 +40,7 @@ func HeartBeatManager(port int) models.ChunkServerState {
 
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
-		log.Print("Dialing error: ", err)
+		log.Print("[Master] Dialing error: ", err)
 		return reply
 	}
 	defer client.Close()
@@ -50,13 +50,13 @@ func HeartBeatManager(port int) models.ChunkServerState {
 		Status:        "alive",
 	}
 
-	log.Println("Send heartbeat request to chunk")
+	log.Println("[Master] Send heartbeat request to chunk")
 	err = client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
 	if err != nil {
-		log.Println("Error calling RPC method: ", err)
+		log.Println("[Master] Error calling RPC method: ", err)
 	}
 
-	log.Printf("Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
+	log.Printf("[Master] Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
 	return reply
 }
 
@@ -68,7 +68,7 @@ func HeartBeatTracker() {
 			if output.Status != "alive" {
 				helper.AckMap.Store(port, "dead")
 
-				log.Printf("Chunk Server at port %d is dead", port)
+				log.Printf("[Master] Chunk Server at port %d is dead\n", port)
 			}
 		}
 
@@ -100,13 +100,13 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 	// Copies data to all alive nodes at that point
 	for port, _ := range aliveNodes {
 		if port != args.Port {
-			fmt.Println("Replicating to port: ", port)
+			fmt.Println("[Master] Replicating to port: ", port)
 
 			client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 			if err != nil {
-				log.Println("Error connecting to RPC server:", err)
+				log.Println("[Master] Error connecting to RPC server:", err)
 			}
-
+      
 			addChunkArgs := models.Chunk{
 				ChunkHandle: args.Chunk.ChunkHandle,
 				ChunkIndex:  args.Chunk.ChunkIndex,
@@ -116,7 +116,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 			// Reply with file uuid & last index of chunk
 			err = client.Call("ChunkServer.AddChunk", addChunkArgs, &output)
 			if err != nil {
-				log.Println("Error calling RPC method: ", err)
+				log.Println("[Master] Error calling RPC method: ", err)
 			}
 			client.Close()
 
@@ -127,7 +127,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 		}
 	}
 
-	log.Println("Replication complete to all alive nodes: ", aliveNodes)
+	log.Println("[Master] Replication complete to all alive nodes: ", aliveNodes)
 
 	mn.Chunks.Range(func(key, value interface{}) bool {
 		if metadata, ok := value.(models.ChunkMetadata); ok {
@@ -141,7 +141,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 
 	mn.ChunkInfo[filename] = response
 
-	log.Println("MasterNode updated of new last index: ", response)
+	log.Println("[Master] MasterNode updated of new last index: ", response)
 
 	*reply = output
 	return nil
@@ -156,7 +156,7 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	if appendFile.Location == 0 {
 		// If cannot be found generate new file, call create file
 		// mn.CreateFile()
-		log.Println("File does not exist")
+		log.Println("[Master] File does not exist")
 	}
 
 	appendArgs = models.AppendData{ChunkMetadata: appendFile, Data: args.Data}
@@ -176,7 +176,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 		metadata := models.ChunkMetadata{
 			Handle:    uuidNew,
 			Location:  helper.CHUNK_SERVER_START_PORT,
-			LastIndex: args.NumberOfChunks,
+			LastIndex: args.NumberOfChunks-1,
 		}
 
 		mn.ChunkInfo[args.Append.Filename] = metadata
@@ -201,7 +201,7 @@ func (mn *MasterNode) CreateLease() {
 func main() {
 	logfile, err := os.OpenFile("../logs/master_node.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		log.Println("Error opening log file:", err)
+		log.Println("[Master] Error opening log file:", err)
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
@@ -215,18 +215,18 @@ func main() {
 
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
-		log.Println("Error starting RPC server:", err)
+		log.Println("[Master] Error starting RPC server:", err)
 	}
 	defer listener.Close()
 
 	go HeartBeatTracker()
 
-	log.Printf("RPC server is listening on port %d", helper.MASTER_SERVER_PORT)
+	log.Printf("[Master] RPC server is listening on port %d\n", helper.MASTER_SERVER_PORT)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("Error accepting connection: %v", err)
+			log.Printf("[Master] Error accepting connection: %v", err)
 			continue
 		}
 

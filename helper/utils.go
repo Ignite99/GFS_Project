@@ -18,7 +18,9 @@ func StringToUUID(input string) uuid.UUID {
 	return stuff
 }
 
-// TODO: handle <10 char string
 func TruncateOutput(bytestream []byte) string {
+	if len(bytestream) <= 35 {
+		return string(bytestream)
+	}
 	return fmt.Sprintf("%s... and %d more characters", string(bytestream[:10]), len(bytestream)-10)
 }
