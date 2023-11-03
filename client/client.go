@@ -1,6 +1,7 @@
 package client // should be client, set temporarily as main so it can be run
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/rpc"
@@ -91,6 +92,8 @@ func AppendToFile(filename string, data []byte) {
 	}
 	mnClient.Close()
 
+	fmt.Println("Masternode Append works")
+
 	// Append data to chunks
 	var reply models.Chunk
 	csClient := dial(helper.CHUNK_SERVER_START_PORT)
@@ -141,6 +144,11 @@ func CreateFile(filename string, data []byte) {
 	}
 	mnClient.Close()
 
+	if metadata.Location == 0 {
+		log.Println("[Client] File already exists in chunkserver")
+		return errors.New("file already exists in chunkserver")
+	}
+
 	// Split file data into chunks and prepare args
 	// Reply has the chunk uuid and location(last index)
 	var reply models.SuccessJSON
@@ -168,7 +176,7 @@ func CreateFile(filename string, data []byte) {
 		log.Fatalln("[Client] Error calling RPC method:", err)
 	}
 	csClient.Close()
-
+  
 	log.Println("[Client] Successfully created file in chunkserver:", reply)
 }
 
