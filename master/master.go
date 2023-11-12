@@ -18,10 +18,12 @@ import (
 type MasterNode struct {
 	ChunkInfo       map[string]models.ChunkMetadata
 	Chunks          sync.Map
+	LeaseMapping    sync.Map
 	StorageLocation sync.Map
 	Mu              sync.Mutex
 }
 
+/* ============================================ HELPER FUNCTIONS  ===========================================*/
 // Used for read for chunkserver
 func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.ChunkMetadata) error {
 	// Loads the filename + chunk index to load metadata from key
@@ -106,7 +108,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 			if err != nil {
 				log.Println("[Master] Error connecting to RPC server:", err)
 			}
-      
+
 			addChunkArgs := models.Chunk{
 				ChunkHandle: args.Chunk.ChunkHandle,
 				ChunkIndex:  args.Chunk.ChunkIndex,
@@ -147,6 +149,8 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 	return nil
 }
 
+/* ============================================ FILE OPERATIONS  ===========================================*/
+
 func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error {
 	var appendArgs models.AppendData
 
@@ -176,7 +180,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 		metadata := models.ChunkMetadata{
 			Handle:    uuidNew,
 			Location:  helper.CHUNK_SERVER_START_PORT,
-			LastIndex: args.NumberOfChunks-1,
+			LastIndex: args.NumberOfChunks - 1,
 		}
 
 		mn.ChunkInfo[args.Append.Filename] = metadata
@@ -194,8 +198,98 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 	return nil
 }
 
-func (mn *MasterNode) CreateLease() {
+/* ============================================ LEASE FUNCTIONS  ===========================================*/
+// API called by client
+func (mn *MasterNode) CreateLease(args models.LeaseData, reply *models.Lease) error {
+	mn.Mu.Lock()
+	defer mn.Mu.Unlock()
 
+	// check if lease already exists for the fileID
+	if _, ok := mn.LeaseMapping.Load(args.FileID); ok {
+		// lease already exists, do not grant new lease
+		return fmt.Errorf("[Master] Hey Client%d, lease already exists for fileID {%s}\n", args.Owner, args.FileID)
+	}
+	newLease := &models.Lease{
+		FileID:     args.FileID,
+		Owner:      args.Owner,
+		Expiration: time.Now().Add(args.Duration),
+		IsExpired:  false,
+	}
+	mn.LeaseMapping.Store(args.FileID, newLease)
+	log.Printf("[Master] Created lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
+	*reply = *newLease // triggers a warning 'cause I'm copying a lock value (then how else to do it sia for API calls...)
+	// placed the lock already for this function
+	return nil
+}
+
+func (mn *MasterNode) RenewLease(args models.LeaseData, reply *models.Lease) error {
+	mn.Mu.Lock()
+	defer mn.Mu.Unlock()
+	// check first if lease exist or not
+	leaseValue, ok := mn.LeaseMapping.Load(args.FileID)
+	if !ok {
+		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} does not exist\n", args.Owner, args.FileID)
+	}
+	// check if lease type is correct
+	existingLease, ok := leaseValue.(*models.Lease)
+	if !ok {
+		return fmt.Errorf("[Master] Hey Client%d, unexpected type found in lease for fileID {%s}\n", args.Owner, args.FileID)
+	}
+	// check if the existing lease hs expired or not
+	if existingLease.IsExpired || time.Now().After(existingLease.Expiration) {
+		existingLease.IsExpired = true
+		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} has already expired!\n", args.Owner, args.FileID)
+	}
+	// renew the lease if pass all check cases
+	existingLease.Expiration = time.Now().Add(args.Duration)
+	existingLease.IsExpired = false
+	*reply = *existingLease
+	return nil
+}
+
+func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
+	mn.Mu.Lock()
+	defer mn.Mu.Unlock()
+
+	// check if lease exists or not
+	_, ok := mn.LeaseMapping.Load(args.FileID)
+	if !ok {
+		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} does not exist\n", args.Owner, args.FileID)
+	}
+	mn.LeaseMapping.Delete(args.FileID)
+	log.Printf("[Master] Released lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
+	*reply = 1
+	return nil
+}
+
+func (mn *MasterNode) CheckForExpiredLeases() {
+	mn.Mu.Lock()
+	defer mn.Mu.Unlock()
+
+	// value type is interface as it is generic
+	mn.LeaseMapping.Range(func(key, value interface{}) bool {
+		fileID := key.(string)
+		lease, ok := value.(*models.Lease)
+		if !ok {
+			// wrong type for lease value obtained, move on to next entry
+			return true
+		}
+		// check if current lease has expired or not
+		if lease.IsExpired || time.Now().After(lease.Expiration) {
+			// lease has expired, release it
+			mn.LeaseMapping.Delete(fileID)
+			log.Printf("[Master]: Lease for fileID {%s} has expired and is released\n", fileID)
+			notifyClientAboutExpiredLease(fileID)
+		}
+		return true
+	})
+}
+
+// edge case for now
+// we assume that client is aware of lease expiration, it will try to renew lease
+func notifyClientAboutExpiredLease(fileID string) {
+	// haven't implement
+	return
 }
 
 func main() {
@@ -210,6 +304,7 @@ func main() {
 		ChunkInfo: make(map[string]models.ChunkMetadata),
 	}
 	gfsMasterNode.InitializeChunkInfo()
+	gfsMasterNode.LeaseMapping = sync.Map{}
 
 	rpc.Register(gfsMasterNode)
 

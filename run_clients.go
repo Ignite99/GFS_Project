@@ -107,7 +107,7 @@ func main() {
 		defer logfile.Close()
 		log.SetOutput(logfile)
 
-		newClient := client.Client{ID: i}
+		newClient := client.Client{ID: i, OwnsLease: false}
 		run(&newClient)
 	}
 

@@ -7,13 +7,15 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
 
 type Client struct {
-	ID int
+	ID        int
+	OwnsLease bool
 }
 
 /* =============================== Chunk-related functions =============================== */
@@ -84,12 +86,25 @@ func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
 // Append to a chunk in the chunk server
 // TODO: can append at any point within the existing file
 func (c *Client) AppendToFile(filename string, data []byte) {
+	leaseArgs := models.LeaseData{FileID: filename, Owner: c.ID, Duration: time.Second * 10}
+	var leaseReply models.Lease
 	appendArgs := models.Append{Filename: filename, Data: data}
 	var appendReply models.AppendData
 	// var replicationReply models.ReplicationResponse
 
 	// Sends a request to the master node. This request includes the file name it wants to append data to.
 	mnClient := c.dial(helper.MASTER_SERVER_PORT)
+	// request for lease first if it does not own lease
+	if !c.OwnsLease {
+		err := mnClient.Call("MasterNode.CreateLease", leaseArgs, &leaseReply)
+		if err != nil {
+			// wait for lease to be released --> haven't thought of a waiting loop function or some sort
+			log.Printf("[Client %d] Lease for file{%s} request rejected.\n", c.ID, filename)
+		}
+		c.OwnsLease = true
+		// i'm thinking of starting a Go Routine called CheckLeaseExpiration for client, that will check if it's lease has expired or not
+		// if it expires, then set c.OwnsLease to false, then attempt to renew by calling API from master
+	}
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v", c.ID, err)
@@ -121,6 +136,16 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	if err != nil {
 		log.Printf("[Client %d] Error closing file: %v\n", c.ID, err)
 	}
+
+	// release lease after operation done
+	var releaseReply int
+	mnClient = c.dial(helper.MASTER_SERVER_PORT)
+	err = mnClient.Call("MasterNode.ReleaseLease", leaseArgs, &releaseReply)
+	if err != nil {
+		log.Fatalf("[Client %d] Error releasing lease for file{%s}: %v\n", c.ID, filename, err)
+	}
+	c.OwnsLease = false
+	mnClient.Close()
 }
 
 func (c *Client) CreateFile(filename string, data []byte) error {

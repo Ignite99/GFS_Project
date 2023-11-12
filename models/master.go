@@ -73,5 +73,14 @@ type ReplicationResponse struct {
 
 /* =========== Leases ===========*/
 type Lease struct {
-	Owner int
+	FileID     string
+	Owner      int
+	Expiration time.Time
+	IsExpired  bool
+}
+
+type LeaseData struct {
+	FileID   string // can be any file identifier by right
+	Owner    int
+	Duration time.Duration
 }
