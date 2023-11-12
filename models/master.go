@@ -70,3 +70,8 @@ type ReplicationResponse struct {
 }
 
 /* =========== Replication & Append ===========*/
+
+/* =========== Leases ===========*/
+type Lease struct {
+	Owner int
+}

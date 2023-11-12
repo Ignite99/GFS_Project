@@ -175,7 +175,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	chunk := cs.GetChunk(args.ChunkMetadata.Handle, args.ChunkMetadata.LastIndex)
 	index := chunk.ChunkIndex
 	chunkSpace := helper.CHUNK_SIZE - len(chunk.Data)
-  
+
 	// Append as much as possible to last chunk
 	if len(args.Data) <= chunkSpace {
 		chunk.Data = append(chunk.Data, args.Data...)
@@ -234,11 +234,6 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 // 	rpc.Register(chunkServerReplica)
 // 	chunkServerReplica.storage = cs.storage
 // }
-
-// master to call this to pass lease to chunk server
-func (cs *ChunkServer) ReceiveLease() {
-
-}
 
 // command or API call for MAIN function to run chunk server
 func runChunkServer(portNumber int) {
