@@ -235,6 +235,8 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 // 	chunkServerReplica.storage = cs.storage
 // }
 
+func (cs *ChunkServer) CheckLease() {}
+
 // master to call this to pass lease to chunk server
 func (cs *ChunkServer) ReceiveLease() {
 

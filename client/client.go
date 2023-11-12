@@ -117,6 +117,16 @@ func AppendToFile(filename string, data []byte) {
 	if err != nil {
 		log.Println("[Client] Error closing file:", err)
 	}
+
+	// Sends a request to the master node. This request includes the file name it wants to append data to.
+	var releaseReply bool
+	releaseArgs := models.ReleaseLeaseData{ChunkMetadata: appendReply.ChunkMetadata, Chunk: reply}
+	mn2Client := dial(helper.MASTER_SERVER_PORT)
+	err2 := mn2Client.Call("MasterNode.ReleaseLease", releaseArgs, &releaseReply)
+	if err2 != nil {
+		log.Fatalln("[Client] Error calling RPC method:", err)
+	}
+	mnClient.Close()
 }
 
 func CreateFile(filename string, data []byte) error {

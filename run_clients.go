@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 	"os"
 	"log"
@@ -26,6 +27,7 @@ const (
 
 	CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\n"
 )
+var wg sync.WaitGroup
 
 // Creates a byte array with random characters
 func generateData(size int) []byte {
@@ -64,7 +66,12 @@ func main() {
 	log.SetOutput(logfile)
 
 	runClient(Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
-	//runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+	runClient(Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 	runClient(Task{Operation: READ, Filename: FILE2})
-	runClient(Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+	go runClient(Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+	runClient(Task{Operation: READ, Filename: FILE2})
+	go runClient(Task{Operation: APPEND, Filename: FILE3, DataSize: 66040})
+	go runClient(Task{Operation: APPEND, Filename: FILE3, DataSize: 66080})
+	runClient(Task{Operation: READ, Filename: FILE3})
+	time.Sleep(time.Second*40)
 }

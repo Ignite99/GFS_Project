@@ -6,15 +6,21 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+type Lease struct {
+	Expiry	time.Time
+	Handle	uuid.UUID
+}
+
 type ChunkLocationArgs struct {
 	Filename   string
 	ChunkIndex int
 }
 
 type ChunkMetadata struct {
-	Handle    uuid.UUID
-	Location  int
-	LastIndex int
+	Handle    	uuid.UUID
+	Location  	int
+	LastIndex 	int
+	Lease		*Lease
 }
 
 type ChunkServerState struct {
@@ -57,6 +63,11 @@ type Append struct {
 type AppendData struct {
 	ChunkMetadata
 	Data []byte
+}
+
+type ReleaseLeaseData struct {
+	ChunkMetadata
+	Chunk
 }
 
 type Replication struct {

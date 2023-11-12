@@ -123,6 +123,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 			response = models.ChunkMetadata{
 				Handle:   output.FileID,
 				Location: output.LastIndex,
+				Lease: nil,
 			}
 		}
 	}
@@ -159,9 +160,48 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 		log.Println("[Master] File does not exist")
 	}
 
+	log.Println("[Master] Leases Checked")
+	if appendFile.Lease != nil && appendFile.Lease.Handle != appendFile.Handle {
+		log.Println("[Master] Lease has been acquired by another operation")
+	}
+
+	// Use a channel to signal when the lease is acquired
+	leaseAcquired := make(chan struct{})
+
+	// Use a goroutine to acquire or renew the lease
+	go func() {
+		for {
+			if appendFile.Lease == nil ||  ( appendFile.Lease.Handle == appendFile.Handle && appendFile.Lease.Expiry.Before(time.Now())){
+				log.Println("[Master] Acquiring Lease")
+				mn.ChunkInfo[args.Filename] = *AcquireLease(&appendFile, 1*time.Minute)
+			} else if (appendFile.Lease.Handle == appendFile.Handle &&  appendFile.Lease.Expiry.After(time.Now())){
+				log.Println("[Master] Renewing Lease")
+				mn.ChunkInfo[args.Filename] = *RenewLease(&appendFile, appendFile.Handle, 1*time.Minute)
+			} else {
+				log.Fatalln("[Master] Error in lease check and acquire")
+			}
+
+			// Check if the lease has been acquired or renewed
+			if appendFile.Lease != nil && appendFile.Lease.Handle == appendFile.Handle {
+				// Signal that the lease has been acquired
+				leaseAcquired <- struct{}{}
+				break
+			}
+
+			// Optionally, add a sleep to avoid busy-waiting
+			time.Sleep(time.Millisecond * 100)
+		}
+	}()
+
+	// Wait for the lease to be acquired
+	<-leaseAcquired
+
+
 	appendArgs = models.AppendData{ChunkMetadata: appendFile, Data: args.Data}
 
 	*reply = appendArgs
+
+	//ReleaseLease(&appendFile, appendFile.Handle)
 
 	return nil
 }
@@ -177,6 +217,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 			Handle:    uuidNew,
 			Location:  helper.CHUNK_SERVER_START_PORT,
 			LastIndex: args.NumberOfChunks-1,
+			Lease: nil,
 		}
 
 		mn.ChunkInfo[args.Append.Filename] = metadata
@@ -185,6 +226,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 			Handle:    uuidNew,
 			Location:  metadata.Location,
 			LastIndex: metadata.LastIndex,
+			Lease: nil,
 		}
 		return nil
 	}
@@ -194,8 +236,9 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 	return nil
 }
 
-func (mn *MasterNode) CreateLease() {
-
+func (mn *MasterNode) ReleaseLease(args models.ReleaseLeaseData, reply *bool) error {
+	*reply = ReleaseAppendLease(&args.ChunkMetadata, args.Handle)
+	return nil
 }
 
 func main() {
@@ -261,4 +304,28 @@ func (mn *MasterNode) RegisterChunkServers(args int, reply *string) error {
 	*reply = "Success"
 
 	return nil
+}
+
+func AcquireLease (appendFile *models.ChunkMetadata, leaseDuration time.Duration) *models.ChunkMetadata {
+	appendFile.Lease = &models.Lease{
+		Expiry: time.Now().Add(leaseDuration),
+		Handle: appendFile.Handle,	
+	}
+	log.Println("[Master] Created Lease for Chunk")
+	return appendFile
+}
+
+func RenewLease (file *models.ChunkMetadata, clientHandle uuid.UUID, leaseDuration time.Duration) *models.ChunkMetadata {
+		file.Lease.Expiry = time.Now().Add(leaseDuration)
+		log.Println("[Master] Renewed Lease for Chunk")
+		return file
+}
+
+func ReleaseAppendLease (file *models.ChunkMetadata, clientHandle uuid.UUID) bool {
+	if file.Lease != nil && file.Lease.Handle == clientHandle {
+		log.Println("[Master] Releasing Lease for Chunk")
+		file.Lease = nil
+		return true
+	}
+	return false
 }
