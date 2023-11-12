@@ -203,7 +203,6 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 func (mn *MasterNode) CreateLease(args models.LeaseData, reply *models.Lease) error {
 	mn.Mu.Lock()
 	defer mn.Mu.Unlock()
-
 	// check if lease already exists for the fileID
 	if _, ok := mn.LeaseMapping.Load(args.FileID); ok {
 		// lease already exists, do not grant new lease
@@ -217,7 +216,14 @@ func (mn *MasterNode) CreateLease(args models.LeaseData, reply *models.Lease) er
 	}
 	mn.LeaseMapping.Store(args.FileID, newLease)
 	log.Printf("[Master] Created lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
-	*reply = *newLease // triggers a warning 'cause I'm copying a lock value (then how else to do it sia for API calls...)
+	// log.Printf("[Master] Current leases: %v\n", mn.LeaseMapping)
+	*reply = models.Lease{
+		FileID:     newLease.FileID,
+		Owner:      newLease.Owner,
+		Expiration: newLease.Expiration,
+		IsExpired:  newLease.IsExpired,
+	}
+	// triggers a warning 'cause I'm copying a lock value (then how else to do it sia for API calls...)
 	// placed the lock already for this function
 	return nil
 }
@@ -250,7 +256,6 @@ func (mn *MasterNode) RenewLease(args models.LeaseData, reply *models.Lease) err
 func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
 	mn.Mu.Lock()
 	defer mn.Mu.Unlock()
-
 	// check if lease exists or not
 	_, ok := mn.LeaseMapping.Load(args.FileID)
 	if !ok {
@@ -258,6 +263,7 @@ func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
 	}
 	mn.LeaseMapping.Delete(args.FileID)
 	log.Printf("[Master] Released lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
+	// log.Printf("[Master] Lease released: %v\n", value)
 	*reply = 1
 	return nil
 }

@@ -83,6 +83,31 @@ func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
 	// TODO: update local copy here
 }
 
+// helper function, may block if lease is not released by other client
+func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseData, leaseReply *models.Lease) {
+	// request for lease first if it does not own lease
+	timestamp := time.Now()
+	for {
+		if c.OwnsLease {
+			return
+		}
+		elapsedTime := time.Since(timestamp)
+		if elapsedTime > time.Second*1 {
+			if !c.OwnsLease {
+				err := mnClient.Call("MasterNode.CreateLease", leaseArgs, &leaseReply)
+				if err != nil {
+					// wait for lease to be released --> haven't thought of a waiting loop function or some sort
+					log.Printf("[Client %d] Lease for file{%s} request rejected.\n", c.ID, leaseArgs.FileID)
+
+				} else {
+					c.OwnsLease = true
+					return
+				}
+			}
+		}
+	}
+}
+
 // Append to a chunk in the chunk server
 // TODO: can append at any point within the existing file
 func (c *Client) AppendToFile(filename string, data []byte) {
@@ -95,16 +120,9 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	// Sends a request to the master node. This request includes the file name it wants to append data to.
 	mnClient := c.dial(helper.MASTER_SERVER_PORT)
 	// request for lease first if it does not own lease
-	if !c.OwnsLease {
-		err := mnClient.Call("MasterNode.CreateLease", leaseArgs, &leaseReply)
-		if err != nil {
-			// wait for lease to be released --> haven't thought of a waiting loop function or some sort
-			log.Printf("[Client %d] Lease for file{%s} request rejected.\n", c.ID, filename)
-		}
-		c.OwnsLease = true
-		// i'm thinking of starting a Go Routine called CheckLeaseExpiration for client, that will check if it's lease has expired or not
-		// if it expires, then set c.OwnsLease to false, then attempt to renew by calling API from master
-	}
+	requestForLease(c, mnClient, &leaseArgs, &leaseReply)
+	// i'm thinking of starting a Go Routine called CheckLeaseExpiration for client, that will check if it's lease has expired or not
+	// if it expires, then set c.OwnsLease to false, then attempt to renew by calling API from master
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v", c.ID, err)

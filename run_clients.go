@@ -84,11 +84,29 @@ func runClient(c *client.Client, t Task) {
 }
 
 func run(c *client.Client) {
+	fmt.Printf("[Client %d] Running...\n", c.ID)
 	// comment out operations that are not expected to be executed
-	runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
-	// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-	runClient(c, Task{Operation: READ, Filename: FILE2})
-	runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+	if c.ID == 0 {
+		runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
+		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+		runClient(c, Task{Operation: READ, Filename: FILE2})
+		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		return
+	}
+	if c.ID == 1 {
+		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
+		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+		runClient(c, Task{Operation: READ, Filename: FILE2})
+		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		return
+	}
+	if c.ID == 2 {
+		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
+		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+		runClient(c, Task{Operation: READ, Filename: FILE2})
+		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+	}
+	fmt.Printf("[Client %d] Finished running...\n", c.ID)
 }
 
 func main() {
@@ -108,7 +126,13 @@ func main() {
 		log.SetOutput(logfile)
 
 		newClient := client.Client{ID: i, OwnsLease: false}
-		run(&newClient)
+		if i == 0 {
+			// force Client0 to run first
+			run(&newClient)
+			continue
+		}
+		// two Clients, 1 and 2, to run and try to append concurrently
+		go run(&newClient)
 	}
 
 	// prevent program from terminating until CTRL+C command signalled
