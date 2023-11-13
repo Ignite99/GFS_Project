@@ -211,7 +211,7 @@ func (mn *MasterNode) CreateLease(args models.LeaseData, reply *models.Lease) er
 	newLease := &models.Lease{
 		FileID:     args.FileID,
 		Owner:      args.Owner,
-		Expiration: time.Now().Add(args.Duration),
+		Expiration: time.Now().Add(args.Duration), //Expiry Time
 		IsExpired:  false,
 	}
 	mn.LeaseMapping.Store(args.FileID, newLease)
@@ -285,7 +285,7 @@ func (mn *MasterNode) CheckForExpiredLeases() {
 			// lease has expired, release it
 			mn.LeaseMapping.Delete(fileID)
 			log.Printf("[Master]: Lease for fileID {%s} has expired and is released\n", fileID)
-			notifyClientAboutExpiredLease(fileID)
+			notifyClientAboutExpiredLease(lease, fileID)
 		}
 		return true
 	})
@@ -293,8 +293,9 @@ func (mn *MasterNode) CheckForExpiredLeases() {
 
 // edge case for now
 // we assume that client is aware of lease expiration, it will try to renew lease
-func notifyClientAboutExpiredLease(fileID string) {
+func notifyClientAboutExpiredLease(lease *models.Lease, fileID string) {
 	// haven't implement
+	log.Printf("[Master] Notified Client%d of expired lease for fileId{%s}\n", lease.Owner, fileID)
 	return
 }
 

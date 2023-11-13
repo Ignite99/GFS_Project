@@ -108,6 +108,23 @@ func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseDat
 	}
 }
 
+// Drop lease ownership once expired, request new lease from Master
+func CheckLeaseExpiration(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseData, leaseReply *models.Lease) {
+	timestamp := time.Now()
+	for {
+		// leaseEndTime := timestamp.Add(leaseArgs.Duration)
+		// log.Printf("[Client %d] Checking Lease Expiry Status", c.ID)
+		elapsedTime := time.Since(timestamp)
+		if elapsedTime >= leaseArgs.Duration {
+			log.Printf("[Client %d] Lease has expired", c.ID)
+			c.OwnsLease = false
+			requestForLease(c, mnClient, leaseArgs, leaseReply)
+			return
+		}
+	}
+
+}
+
 // Append to a chunk in the chunk server
 // TODO: can append at any point within the existing file
 func (c *Client) AppendToFile(filename string, data []byte) {
@@ -123,6 +140,9 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	requestForLease(c, mnClient, &leaseArgs, &leaseReply)
 	// i'm thinking of starting a Go Routine called CheckLeaseExpiration for client, that will check if it's lease has expired or not
 	// if it expires, then set c.OwnsLease to false, then attempt to renew by calling API from master
+	go CheckLeaseExpiration(c, mnClient, &leaseArgs, &leaseReply)
+
+	//Append
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v", c.ID, err)

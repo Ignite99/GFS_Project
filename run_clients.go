@@ -105,6 +105,7 @@ func run(c *client.Client) {
 		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 		runClient(c, Task{Operation: READ, Filename: FILE2})
 		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 	}
 	fmt.Printf("[Client %d] Finished running...\n", c.ID)
 }
@@ -114,7 +115,7 @@ func main() {
 
 	// command line arguments
 	var numOfClients int
-	flag.IntVar(&numOfClients, "numOfClients", 1, "Number of clients running.")
+	flag.IntVar(&numOfClients, "numOfClients", 3, "Number of clients running.")
 	flag.Parse()
 
 	for i := 0; i < numOfClients; i++ {
