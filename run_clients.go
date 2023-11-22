@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/sutd_gfs_project/client"
 )
@@ -111,7 +110,7 @@ func run(c *client.Client) {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
+	// rand.Seed(time.Now().UnixNano())
 
 	// command line arguments
 	var numOfClients int
@@ -126,7 +125,7 @@ func main() {
 		defer logfile.Close()
 		log.SetOutput(logfile)
 
-		newClient := client.Client{ID: i, OwnsLease: false}
+		newClient := client.Client{ID: i, OwnsLease: false, LeaseExpiryChan: make(chan bool, 1), RequestDone: make(chan bool, 1)}
 		if i == 0 {
 			// force Client0 to run first
 			run(&newClient)

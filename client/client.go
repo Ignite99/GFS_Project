@@ -14,8 +14,10 @@ import (
 )
 
 type Client struct {
-	ID        int
-	OwnsLease bool
+	ID              int
+	OwnsLease       bool
+	LeaseExpiryChan chan bool
+	RequestDone     chan bool
 }
 
 /* =============================== Chunk-related functions =============================== */
@@ -66,22 +68,7 @@ func (c *Client) readChunks(metadata models.ChunkMetadata, index1 int, index2 in
 	return reply
 }
 
-/* =============================== File-related functions =============================== */
-
-func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
-	// Compute number of chunks
-	fi, err := os.Stat(filename)
-	if err != nil {
-		log.Fatalf("[Client %d] Error acquiring file information: %v\n", c.ID, err)
-	}
-	chunks := computeNumberOfChunks(int(fi.Size()))
-
-	// Read each chunk
-	chunkMetadata := c.requestChunkLocation(filename, chunks)
-	//chunkMetadata.Handle = helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
-	c.readChunks(chunkMetadata, firstIndex, LastIndex)
-	// TODO: update local copy here
-}
+/* =============================== Lease-related functions =============================== */
 
 // helper function, may block if lease is not released by other client
 func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseData, leaseReply *models.Lease) {
@@ -109,20 +96,37 @@ func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseDat
 }
 
 // Drop lease ownership once expired, request new lease from Master
-func CheckLeaseExpiration(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseData, leaseReply *models.Lease) {
-	timestamp := time.Now()
+func checkLeaseExpiration(c *Client, leaseArgs *models.LeaseData, lease *models.Lease) {
 	for {
-		// leaseEndTime := timestamp.Add(leaseArgs.Duration)
-		// log.Printf("[Client %d] Checking Lease Expiry Status", c.ID)
-		elapsedTime := time.Since(timestamp)
-		if elapsedTime >= leaseArgs.Duration {
-			log.Printf("[Client %d] Lease has expired", c.ID)
-			c.OwnsLease = false
-			requestForLease(c, mnClient, leaseArgs, leaseReply)
+		select {
+		case <-c.RequestDone:
+			log.Printf("[Client %d] Operation done. Stop lease timer\n", c.ID)
 			return
+		default:
+			elapsedTime := time.Since(lease.Expiration)
+			if elapsedTime >= leaseArgs.Duration {
+				c.LeaseExpiryChan <- true
+				return
+			}
 		}
 	}
+}
 
+/* =============================== File-related functions =============================== */
+
+func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
+	// Compute number of chunks
+	fi, err := os.Stat(filename)
+	if err != nil {
+		log.Fatalf("[Client %d] Error acquiring file information: %v\n", c.ID, err)
+	}
+	chunks := computeNumberOfChunks(int(fi.Size()))
+
+	// Read each chunk
+	chunkMetadata := c.requestChunkLocation(filename, chunks)
+	//chunkMetadata.Handle = helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	c.readChunks(chunkMetadata, firstIndex, LastIndex)
+	// TODO: update local copy here
 }
 
 // Append to a chunk in the chunk server
@@ -138,52 +142,61 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	mnClient := c.dial(helper.MASTER_SERVER_PORT)
 	// request for lease first if it does not own lease
 	requestForLease(c, mnClient, &leaseArgs, &leaseReply)
-	// i'm thinking of starting a Go Routine called CheckLeaseExpiration for client, that will check if it's lease has expired or not
-	// if it expires, then set c.OwnsLease to false, then attempt to renew by calling API from master
-	go CheckLeaseExpiration(c, mnClient, &leaseArgs, &leaseReply)
+	// spawn go routine to periodically check lease expiration
+	go checkLeaseExpiration(c, &leaseArgs, &leaseReply)
 
-	//Append
-	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
-	if err != nil {
-		log.Fatalf("[Client %d] Error calling RPC method: %v", c.ID, err)
-	}
-	mnClient.Close()
+	for {
+		select {
+		case <-c.LeaseExpiryChan:
+			log.Printf("[Client %d] Lease has expired", c.ID)
+			// requestForLease(c, mnClient, &leaseArgs, &leaseReply)
+		default:
+			//Append
+			err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
+			if err != nil {
+				log.Fatalf("[Client %d] Error calling RPC method: %v", c.ID, err)
+			}
+			mnClient.Close()
 
-	fmt.Println("Masternode Append works")
+			fmt.Println("Masternode Append works")
 
-	// Append data to chunks
-	var reply models.Chunk
-	csClient := c.dial(helper.CHUNK_SERVER_START_PORT)
-	err = csClient.Call("ChunkServer.Append", appendReply, &reply)
-	if err != nil {
-		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
-	}
-	csClient.Close()
-	log.Printf("[Client %d] Successfully appended payload %v\n:", c.ID, helper.TruncateOutput(data))
+			// Append data to chunks
+			var reply models.Chunk
+			csClient := c.dial(helper.CHUNK_SERVER_START_PORT)
+			err = csClient.Call("ChunkServer.Append", appendReply, &reply)
+			if err != nil {
+				log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+			}
+			csClient.Close()
+			log.Printf("[Client %d] Successfully appended payload %v\n:", c.ID, helper.TruncateOutput(data))
 
-	// Append data to local copy of file
-	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("[Client %d] Error opening file: %v\n", c.ID, err)
-	}
-	_, err = f.Write(data)
-	if err != nil {
-		log.Printf("[Client %d] Error writing to file: %v", c.ID, err)
-	}
-	err = f.Close()
-	if err != nil {
-		log.Printf("[Client %d] Error closing file: %v\n", c.ID, err)
-	}
+			// Append data to local copy of file
+			f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Fatalf("[Client %d] Error opening file: %v\n", c.ID, err)
+			}
+			_, err = f.Write(data)
+			if err != nil {
+				log.Printf("[Client %d] Error writing to file: %v", c.ID, err)
+			}
+			err = f.Close()
+			if err != nil {
+				log.Printf("[Client %d] Error closing file: %v\n", c.ID, err)
+			}
 
-	// release lease after operation done
-	var releaseReply int
-	mnClient = c.dial(helper.MASTER_SERVER_PORT)
-	err = mnClient.Call("MasterNode.ReleaseLease", leaseArgs, &releaseReply)
-	if err != nil {
-		log.Fatalf("[Client %d] Error releasing lease for file{%s}: %v\n", c.ID, filename, err)
+			// release lease after operation done
+			var releaseReply int
+			mnClient = c.dial(helper.MASTER_SERVER_PORT)
+			err = mnClient.Call("MasterNode.ReleaseLease", leaseArgs, &releaseReply)
+			if err != nil {
+				log.Fatalf("[Client %d] Error releasing lease for file{%s}: %v\n", c.ID, filename, err)
+			}
+			c.OwnsLease = false
+			mnClient.Close()
+			c.RequestDone <- true
+			return
+		}
 	}
-	c.OwnsLease = false
-	mnClient.Close()
 }
 
 func (c *Client) CreateFile(filename string, data []byte) error {
