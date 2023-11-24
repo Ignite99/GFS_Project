@@ -41,7 +41,6 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 func HeartBeatManager(port int) models.ChunkServerState {
 	var reply models.ChunkServerState
 
-	fmt.Printf("master %d\n", port)
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		log.Print("[Master] Dialing error: ", err)
@@ -76,7 +75,7 @@ func HeartBeatTracker() {
 			}
 		}
 
-		time.Sleep(10 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }
 

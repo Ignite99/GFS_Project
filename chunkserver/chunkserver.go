@@ -250,8 +250,16 @@ func RunChunkServer(portNumber int) {
 		storage: make([]models.Chunk, 0),
 		portNum: portNumber,
 	}
-	//rpc.Register(chunkServerInstance)
-	rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
+	/*
+	err = rpc.Register(chunkServerInstance)
+	if err != nil {
+		fmt.Println(err)
+	}
+	*/
+	err = rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
+	if err != nil {
+		log.Fatal("[ChunkServer] Failed to register to RPC:" + err)
+	}
 
 	chunkServerInstance.InitialiseChunks()
 	chunkServerInstance.Registration(portNumber)
@@ -267,7 +275,6 @@ func RunChunkServer(portNumber int) {
 	log.Printf("[ChunkServer] RPC listening on port %d", portNumber)
 
 	for {
-		fmt.Printf("loop %d\n", chunkServerInstance.portNum)
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatal("[ChunkServer] Error accepting connection", err)
