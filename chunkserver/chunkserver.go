@@ -20,6 +20,7 @@ import (
 type ChunkServer struct {
 	storage []models.Chunk
 	portNum int
+	killed bool
 }
 
 /* =============================== Chunk Storage functions =============================== */
@@ -141,7 +142,6 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 		Port:          cs.portNum,
 	}
 	*reply = heartBeat
-	fmt.Println(cs.portNum)
 	return nil
 }
 
@@ -219,6 +219,13 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	return nil
 }
 
+func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
+	cs.killed = true
+	*reply = models.AckSigKill {Ack: true}
+	log.Println("[ChunkServer] Received kill signal")
+	return nil
+}
+
 // client to call this API when it wants to truncate data
 // func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
 // 	// will add more logic here
@@ -258,7 +265,7 @@ func RunChunkServer(portNumber int) {
 	*/
 	err = rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
 	if err != nil {
-		log.Fatal("[ChunkServer] Failed to register to RPC:" + err)
+		log.Fatal("[ChunkServer] Failed to register to RPC", err)
 	}
 
 	chunkServerInstance.InitialiseChunks()
@@ -275,6 +282,9 @@ func RunChunkServer(portNumber int) {
 	log.Printf("[ChunkServer] RPC listening on port %d", portNumber)
 
 	for {
+		if chunkServerInstance.killed {
+			return
+		}
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatal("[ChunkServer] Error accepting connection", err)

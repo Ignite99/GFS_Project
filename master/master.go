@@ -60,6 +60,14 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	}
 
 	log.Printf("[Master] Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
+
+	/*
+	if port == 8090 {
+		var ack models.AckSigKill
+		client.Call("8090.Kill", 0, &ack)
+		fmt.Println("Killing 8090")
+	}
+	*/
 	return reply
 }
 
@@ -75,7 +83,7 @@ func HeartBeatTracker() {
 			}
 		}
 
-		time.Sleep(60 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }
 
