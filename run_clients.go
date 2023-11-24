@@ -41,14 +41,14 @@ func generateData(size int, clientId int, t Task) []byte {
 	startOfData := ""
 	if t.Operation == APPEND {
 		startOfData += lineDivider + "Start of line appended by by Client " + strconv.Itoa(clientId) + lineDivider
-	} else if t.Operation == READ {
+	} else if t.Operation == WRITE {
 		startOfData += lineDivider + "Start of line written by by Client " + strconv.Itoa(clientId) + lineDivider
 	}
 	// write out end of line to show where file append/writing ends for client
 	endOfData := ""
 	if t.Operation == APPEND {
 		endOfData += lineDivider + "End of line appended by by Client " + strconv.Itoa(clientId) + lineDivider
-	} else if t.Operation == READ {
+	} else if t.Operation == WRITE {
 		endOfData += lineDivider + "End of line written by by Client " + strconv.Itoa(clientId) + lineDivider
 	}
 
@@ -66,7 +66,7 @@ func generateData(size int, clientId int, t Task) []byte {
 
 func runClient(c *client.Client, t Task) {
 	if t.Operation == READ {
-		c.ReadFile(t.Filename, 1, 1)
+		c.ReadFile(t.Filename, 0, 0)
 		return
 	}
 
@@ -89,7 +89,7 @@ func run(c *client.Client) {
 		runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 		runClient(c, Task{Operation: READ, Filename: FILE2})
-		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 		return
 	}
 	if c.ID == 1 {
@@ -104,7 +104,24 @@ func run(c *client.Client) {
 		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 		runClient(c, Task{Operation: READ, Filename: FILE2})
 		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		return
+	}
+	if c.ID == 3 {
+		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
+		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+		runClient(c, Task{Operation: READ, Filename: FILE2})
 		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		return
+	}
+	if c.ID == 4 {
+		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
+		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+		runClient(c, Task{Operation: READ, Filename: FILE2})
+		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
+		return
 	}
 	fmt.Printf("[Client %d] Finished running...\n", c.ID)
 }

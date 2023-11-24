@@ -100,7 +100,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 	})
 
 	// Copies data to all alive nodes at that point
-	for port, _ := range aliveNodes {
+	for port := range aliveNodes {
 		if port != args.Port {
 			fmt.Println("Replicating to port: ", port)
 
