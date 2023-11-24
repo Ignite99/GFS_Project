@@ -1,7 +1,7 @@
-package main
+package chunkserver
 
 import (
-	"flag"
+	//"flag"
 	"fmt"
 	"log"
 	"net"
@@ -15,7 +15,7 @@ import (
 	"github.com/sutd_gfs_project/models"
 )
 
-var portNumber int
+//var portNumber int
 
 type ChunkServer struct {
 	storage []models.Chunk
@@ -72,7 +72,7 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 		}
 
 		replicateChunk := models.Replication{
-			Port:  portNumber,
+			Port:  cs.portNum,
 			Chunk: newChunk,
 		}
 
@@ -141,6 +141,7 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 		Port:          cs.portNum,
 	}
 	*reply = heartBeat
+	fmt.Println(cs.portNum)
 	return nil
 }
 
@@ -196,7 +197,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 				args.Data = args.Data[chunkSpace:]
 			}
 
-			replicateChunk := models.Replication{Port: portNumber, Chunk: chunk}
+			replicateChunk := models.Replication{Port: cs.portNum, Chunk: chunk}
 
 			// Updates Master for new last index entry
 			client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
@@ -236,7 +237,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 // }
 
 // command or API call for MAIN function to run chunk server
-func runChunkServer(portNumber int) {
+func RunChunkServer(portNumber int) {
 	logfile, err := os.OpenFile("../logs/chunkServer_"+strconv.Itoa(portNumber)+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal("[ChunkServer] Error opening log file:", err)
@@ -249,7 +250,8 @@ func runChunkServer(portNumber int) {
 		storage: make([]models.Chunk, 0),
 		portNum: portNumber,
 	}
-	rpc.Register(chunkServerInstance)
+	//rpc.Register(chunkServerInstance)
+	rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
 
 	chunkServerInstance.InitialiseChunks()
 	chunkServerInstance.Registration(portNumber)
@@ -265,6 +267,7 @@ func runChunkServer(portNumber int) {
 	log.Printf("[ChunkServer] RPC listening on port %d", portNumber)
 
 	for {
+		fmt.Printf("loop %d\n", chunkServerInstance.portNum)
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatal("[ChunkServer] Error accepting connection", err)
@@ -275,6 +278,7 @@ func runChunkServer(portNumber int) {
 }
 
 // starting function for this file --> will be moved to main.go
+/*
 func main() {
 	flag.IntVar(&portNumber, "portNumber", helper.CHUNK_SERVER_START_PORT, "Port number of Chunk Server.")
 	flag.Parse()
@@ -282,8 +286,9 @@ func main() {
 	// go run chunkserver.go --portNumber 8090-8095
 	// Port number arguments
 
-	runChunkServer(portNumber)
+	RunChunkServer(portNumber)
 }
+*/
 
 func (cs *ChunkServer) InitialiseChunks() {
 	fmt.Println("Initialised chunkServer Data")

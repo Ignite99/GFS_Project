@@ -13,6 +13,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
+	"github.com/sutd_gfs_project/chunkserver"
 )
 
 type MasterNode struct {
@@ -40,6 +41,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 func HeartBeatManager(port int) models.ChunkServerState {
 	var reply models.ChunkServerState
 
+	fmt.Printf("master %d\n", port)
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		log.Print("[Master] Dialing error: ", err)
@@ -53,7 +55,7 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	}
 
 	log.Println("[Master] Send heartbeat request to chunk")
-	err = client.Call("ChunkServer.SendHeartBeat", heartBeatRequest, &reply)
+	err = client.Call(fmt.Sprintf("%d.SendHeartBeat", port), heartBeatRequest, &reply)
 	if err != nil {
 		log.Println("[Master] Error calling RPC method: ", err)
 	}
@@ -74,7 +76,7 @@ func HeartBeatTracker() {
 			}
 		}
 
-		time.Sleep(60 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -116,7 +118,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 			}
 
 			// Reply with file uuid & last index of chunk
-			err = client.Call("ChunkServer.AddChunk", addChunkArgs, &output)
+			err = client.Call(fmt.Sprintf("%d.AddChunk", port), addChunkArgs, &output)
 			if err != nil {
 				log.Println("[Master] Error calling RPC method: ", err)
 			}
@@ -324,6 +326,10 @@ func main() {
 	go HeartBeatTracker()
 
 	log.Printf("[Master] RPC server is listening on port %d\n", helper.MASTER_SERVER_PORT)
+
+	for i := 0; i < 3; i++ {
+		go chunkserver.RunChunkServer(8090+i)
+	}
 
 	for {
 		conn, err := listener.Accept()
