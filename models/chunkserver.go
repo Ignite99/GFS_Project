@@ -13,3 +13,7 @@ type ReadDataStream struct {
 	ChunkID uuid.UUID
 	Data    []int
 }
+
+type AckSigKill struct {
+	Ack bool
+}
