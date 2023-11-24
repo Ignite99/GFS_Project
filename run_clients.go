@@ -92,35 +92,11 @@ func run(c *client.Client) {
 		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 		return
 	}
-	if c.ID == 1 {
+	if c.ID >= 1 {
 		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 		runClient(c, Task{Operation: READ, Filename: FILE2})
 		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
-		return
-	}
-	if c.ID == 2 {
-		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
-		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-		runClient(c, Task{Operation: READ, Filename: FILE2})
-		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
-		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
-		return
-	}
-	if c.ID == 3 {
-		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
-		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-		runClient(c, Task{Operation: READ, Filename: FILE2})
-		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
-		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
-		return
-	}
-	if c.ID == 4 {
-		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
-		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
-		runClient(c, Task{Operation: READ, Filename: FILE2})
-		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
-		// runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 		return
 	}
 	fmt.Printf("[Client %d] Finished running...\n", c.ID)
