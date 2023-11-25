@@ -58,7 +58,7 @@ func (c *Client) readChunks(metadata models.ChunkMetadata, index1 int, index2 in
 		ChunkMetadata: metadata,
 	}
 
-	err := client.Call("ChunkServer.ReadRange", query, &reply)
+	err := client.Call(fmt.Sprintf("%d.ReadRange", metadata.Location), query, &reply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 	}
@@ -148,8 +148,8 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 
 	// Append data to chunks
 	var reply models.Chunk
-	csClient := c.dial(helper.CHUNK_SERVER_START_PORT)
-	err = csClient.Call("ChunkServer.Append", appendReply, &reply)
+	csClient := c.dial(appendReply.Location)
+	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.Location), appendReply, &reply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 	}
@@ -241,8 +241,8 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			}
 
 			// Push chunks to chunk server
-			csClient := c.dial(helper.CHUNK_SERVER_START_PORT)
-			err = csClient.Call("ChunkServer.CreateFileChunks", chunkArray, &reply)
+			csClient := c.dial(metadata.Location)
+			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location), chunkArray, &reply)
 			if err != nil {
 				log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 			}
@@ -268,8 +268,8 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 
 /* =============================== Helper functions =============================== */
 
-func (c *Client) dial(address int) *rpc.Client {
-	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(address))
+func (c *Client) dial(port int) *rpc.Client {
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 	if err != nil {
 		log.Fatalf("[Client %d] Error connecting to RPC server: %v", c.ID, err)
 	}
