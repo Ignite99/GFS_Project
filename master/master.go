@@ -11,9 +11,9 @@ import (
 	"time"
 
 	uuid "github.com/satori/go.uuid"
+	"github.com/sutd_gfs_project/chunkserver"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
-	"github.com/sutd_gfs_project/chunkserver"
 )
 
 type MasterNode struct {
@@ -26,14 +26,32 @@ type MasterNode struct {
 
 /* ============================================ HELPER FUNCTIONS  ===========================================*/
 // Used for read for chunkserver
-func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.ChunkMetadata) error {
+func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.MetadataResponse) error {
+	var nextBestPort int
+
 	// Loads the filename + chunk index to load metadata from key
 	chunkMetadata := mn.ChunkInfo[args.Filename]
-	if chunkMetadata.Location == 0 {
+	if chunkMetadata.Location == nil {
 		return helper.ErrChunkNotFound
 	}
 
-	*reply = chunkMetadata
+	for _, value := range chunkMetadata.Location {
+		portAlive, _ := helper.AckMap.Load(value)
+		if portAlive == "alive" {
+			nextBestPort = value
+			break
+		} else {
+			continue
+		}
+	}
+
+	response := models.MetadataResponse{
+		Handle:    chunkMetadata.Handle,
+		Location:  nextBestPort,
+		LastIndex: chunkMetadata.LastIndex,
+	}
+
+	*reply = response
 
 	return nil
 }
@@ -62,11 +80,11 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	log.Printf("[Master] Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
 
 	/*
-	if port == 8090 {
-		var ack models.AckSigKill
-		client.Call("8090.Kill", 0, &ack)
-		fmt.Println("Killing 8090")
-	}
+		if port == 8090 {
+			var ack models.AckSigKill
+			client.Call("8090.Kill", 0, &ack)
+			fmt.Println("Killing 8090")
+		}
 	*/
 	return reply
 }
@@ -93,6 +111,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 	var output models.SuccessJSON
 	var response models.ChunkMetadata
 	var filename string
+	var alivePorts []int
 
 	log.Println("[Master] Replication started")
 
@@ -103,6 +122,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 		if val, ok := value.(string); ok && val == "alive" {
 			if port, ok := key.(int); ok {
 				aliveNodes[port] = val
+				alivePorts = append(alivePorts, port)
 			}
 		}
 		return true
@@ -132,8 +152,8 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 			client.Close()
 
 			response = models.ChunkMetadata{
-				Handle:   output.FileID,
-				Location: output.LastIndex,
+				Handle:    output.FileID,
+				LastIndex: output.LastIndex,
 			}
 		}
 	}
@@ -149,6 +169,8 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 		}
 		return true
 	})
+
+	response.Location = alivePorts
 
 	mn.ChunkInfo[filename] = response
 
@@ -166,7 +188,7 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	// The master node receives the client's request for appending data to the file and processes it.
 	// It verifies that the file exists and handles any naming conflicts or errors.
 	appendFile := mn.ChunkInfo[args.Filename]
-	if appendFile.Location == 0 {
+	if appendFile.Location == nil {
 		// If cannot be found generate new file, call create file
 		// mn.CreateFile()
 		log.Println("[Master] File does not exist")
@@ -186,9 +208,21 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 
 		uuidNew := uuid.NewV4()
 
+		var alivePorts []int
+
+		// Get all alive ports
+		helper.AckMap.Range(func(key, value interface{}) bool {
+			if val, ok := value.(string); ok && val == "alive" {
+				if port, ok := key.(int); ok {
+					alivePorts = append(alivePorts, port)
+				}
+			}
+			return true
+		})
+
 		metadata := models.ChunkMetadata{
 			Handle:    uuidNew,
-			Location:  helper.CHUNK_SERVER_START_PORT,
+			Location:  alivePorts,
 			LastIndex: args.NumberOfChunks - 1,
 		}
 
@@ -335,7 +369,7 @@ func main() {
 	log.Printf("[Master] RPC server is listening on port %d\n", helper.MASTER_SERVER_PORT)
 
 	for i := 0; i < 3; i++ {
-		go chunkserver.RunChunkServer(8090+i)
+		go chunkserver.RunChunkServer(8090 + i)
 	}
 
 	for {
@@ -359,7 +393,7 @@ func (mn *MasterNode) InitializeChunkInfo() {
 	// Location is the chunkServer that it is located in
 	metadata1 := models.ChunkMetadata{
 		Handle:    uuid1,
-		Location:  8090,
+		Location:  []int{8090, 8091, 8092},
 		LastIndex: 3,
 	}
 

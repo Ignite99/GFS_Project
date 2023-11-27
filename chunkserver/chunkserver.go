@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+
 	//"os"
 	"strconv"
 	"time"
@@ -20,7 +21,7 @@ import (
 type ChunkServer struct {
 	storage []models.Chunk
 	portNum int
-	killed bool
+	killed  bool
 }
 
 /* =============================== Chunk Storage functions =============================== */
@@ -150,6 +151,8 @@ func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
 
 	chunkUUID := args.ChunkMetadata.Handle
 
+	fmt.Println(args)
+
 	if args.ChunkIndex1 == args.ChunkIndex2 {
 		for _, chunk := range cs.storage {
 			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex == args.ChunkIndex1 {
@@ -220,7 +223,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 
 func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 	cs.killed = true
-	*reply = models.AckSigKill {Ack: true}
+	*reply = models.AckSigKill{Ack: true}
 	log.Printf("[ChunkServer %d] Received kill signal\n", cs.portNum)
 	return nil
 }
@@ -245,12 +248,12 @@ func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 // command or API call for MAIN function to run chunk server
 func RunChunkServer(portNumber int) {
 	/*
-	logfile, err := os.OpenFile("../logs/chunkServer_"+strconv.Itoa(portNumber)+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatal("[ChunkServer] Error opening log file:", err)
-	}
-	defer logfile.Close()
-	log.SetOutput(logfile)
+		logfile, err := os.OpenFile("../logs/chunkServer_"+strconv.Itoa(portNumber)+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatal("[ChunkServer] Error opening log file:", err)
+		}
+		defer logfile.Close()
+		log.SetOutput(logfile)
 	*/
 
 	// initialize chunk server instance
@@ -259,10 +262,10 @@ func RunChunkServer(portNumber int) {
 		portNum: portNumber,
 	}
 	/*
-	err = rpc.Register(chunkServerInstance)
-	if err != nil {
-		fmt.Println(err)
-	}
+		err = rpc.Register(chunkServerInstance)
+		if err != nil {
+			fmt.Println(err)
+		}
 	*/
 	err := rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
 	if err != nil {

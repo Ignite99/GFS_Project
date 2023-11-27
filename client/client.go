@@ -23,7 +23,7 @@ type Client struct {
 /* =============================== Chunk-related functions =============================== */
 
 // Request chunk location from master server
-func (c *Client) requestChunkLocation(filename string, chunkIndex int) models.ChunkMetadata {
+func (c *Client) requestChunkLocation(filename string, chunkIndex int) models.MetadataResponse {
 	client := c.dial(helper.MASTER_SERVER_PORT)
 	defer client.Close()
 
@@ -31,7 +31,7 @@ func (c *Client) requestChunkLocation(filename string, chunkIndex int) models.Ch
 		Filename:   filename,
 		ChunkIndex: chunkIndex,
 	}
-	var reply models.ChunkMetadata
+	var reply models.MetadataResponse
 	err := client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
@@ -46,7 +46,7 @@ func (c *Client) requestChunkLocation(filename string, chunkIndex int) models.Ch
 }
 
 // Read from a chunk in the chunk server
-func (c *Client) readChunks(metadata models.ChunkMetadata, index1 int, index2 int) []byte {
+func (c *Client) readChunks(metadata models.MetadataResponse, index1 int, index2 int) []byte {
 	client := c.dial(metadata.Location)
 	defer client.Close()
 
@@ -148,7 +148,7 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 
 	// Append data to chunks
 	var reply models.Chunk
-	csClient := c.dial(appendReply.Location)
+	csClient := c.dial(appendReply.Location[0])
 	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.Location), appendReply, &reply)
 	if err != nil {
 		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
@@ -215,7 +215,7 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			}
 			mnClient.Close()
 
-			if metadata.Location == 0 {
+			if metadata.Location == nil {
 				log.Printf("[Client %d] File already exists in chunkserver\n", c.ID)
 				return errors.New("file already exists in chunkserver")
 			}
@@ -241,8 +241,8 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			}
 
 			// Push chunks to chunk server
-			csClient := c.dial(metadata.Location)
-			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location), chunkArray, &reply)
+			csClient := c.dial(metadata.Location[0])
+			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location[0]), chunkArray, &reply)
 			if err != nil {
 				log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 			}

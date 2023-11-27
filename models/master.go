@@ -13,6 +13,12 @@ type ChunkLocationArgs struct {
 
 type ChunkMetadata struct {
 	Handle    uuid.UUID
+	Location  []int
+	LastIndex int
+}
+
+type MetadataResponse struct {
+	Handle    uuid.UUID
 	Location  int
 	LastIndex int
 }
@@ -38,7 +44,7 @@ type CreateData struct {
 type ReadData struct {
 	ChunkIndex1   int
 	ChunkIndex2   int
-	ChunkMetadata ChunkMetadata
+	ChunkMetadata MetadataResponse
 }
 
 /* =========== Read ===========*/
