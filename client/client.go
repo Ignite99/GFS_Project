@@ -34,7 +34,7 @@ func (c *Client) requestChunkLocation(filename string, chunkIndex int) models.Me
 	var reply models.MetadataResponse
 	err := client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
 	if err != nil {
-		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 	}
 
 	if chunkIndex != reply.LastIndex {
@@ -60,7 +60,7 @@ func (c *Client) readChunks(metadata models.MetadataResponse, index1 int, index2
 
 	err := client.Call(fmt.Sprintf("%d.ReadRange", metadata.Location), query, &reply)
 	if err != nil {
-		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 	}
 
 	log.Printf("[Client %d] Received chunk: %v\n", c.ID, helper.TruncateOutput(reply))
@@ -118,7 +118,7 @@ func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
 	// Compute number of chunks
 	fi, err := os.Stat(filename)
 	if err != nil {
-		log.Fatalf("[Client %d] Error acquiring file information: %v\n", c.ID, err)
+		log.Printf("[Client %d] Error acquiring file information: %v\n", c.ID, err)
 	}
 	chunks := computeNumberOfChunks(int(fi.Size()))
 
@@ -140,7 +140,7 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	//Append
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
-		log.Fatalf("[Client %d] Error calling RPC method: %v", c.ID, err)
+		log.Printf("[Client %d] Error calling RPC method: %v", c.ID, err)
 	}
 	mnClient.Close()
 
@@ -151,7 +151,7 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	csClient := c.dial(appendReply.Location[0])
 	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.Location), appendReply, &reply)
 	if err != nil {
-		log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 	}
 	csClient.Close()
 	log.Printf("[Client %d] Successfully appended payload %v\n:", c.ID, helper.TruncateOutput(data))
@@ -159,7 +159,7 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	// Append data to local copy of file
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatalf("[Client %d] Error opening file: %v\n", c.ID, err)
+		log.Printf("[Client %d] Error opening file: %v\n", c.ID, err)
 	}
 	_, err = f.Write(data)
 	if err != nil {
@@ -211,7 +211,7 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			mnClient := c.dial(helper.MASTER_SERVER_PORT)
 			err = mnClient.Call("MasterNode.CreateFile", createArgs, &metadata)
 			if err != nil {
-				log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+				log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 			}
 			mnClient.Close()
 
@@ -244,7 +244,7 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			csClient := c.dial(metadata.Location[0])
 			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location[0]), chunkArray, &reply)
 			if err != nil {
-				log.Fatalf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+				log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
 			}
 			csClient.Close()
 
@@ -255,7 +255,7 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			mnClient = c.dial(helper.MASTER_SERVER_PORT)
 			err = mnClient.Call("MasterNode.ReleaseLease", leaseArgs, &releaseReply)
 			if err != nil {
-				log.Fatalf("[Client %d] Error releasing lease for file{%s}: %v\n", c.ID, filename, err)
+				log.Printf("[Client %d] Error releasing lease for file{%s}: %v\n", c.ID, filename, err)
 			}
 			c.OwnsLease = false
 			mnClient.Close()
