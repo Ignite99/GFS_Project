@@ -9,7 +9,7 @@ import (
 )
 
 // Testing get chunk location request
-func main() {
+func killer() {
 	client, err := rpc.Dial("tcp", "localhost:8090") // Replace with your master node's address
 	if err != nil {
 		log.Fatal("Error connecting to RPC server:", err)

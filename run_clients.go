@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/sutd_gfs_project/client"
 )
@@ -94,7 +93,6 @@ func run(c *client.Client) {
 		return
 	}
 	if c.ID >= 1 {
-		time.Sleep(2 * time.Second)
 		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
 		runClient(c, Task{Operation: READ, Filename: FILE2})
