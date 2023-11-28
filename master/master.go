@@ -14,6 +14,7 @@ import (
 	"github.com/sutd_gfs_project/chunkserver"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
+	"github.com/theritikchoure/logx"
 )
 
 type MasterNode struct {
@@ -27,7 +28,7 @@ type MasterNode struct {
 /* ============================================ HELPER FUNCTIONS  ===========================================*/
 // Used for read for chunkserver
 func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.MetadataResponse) error {
-	var nextBestPort int
+	var PrimaryReplica int
 
 	// Loads the filename + chunk index to load metadata from key
 	chunkMetadata := mn.ChunkInfo[args.Filename]
@@ -38,7 +39,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 	for _, value := range chunkMetadata.Location {
 		portAlive, _ := helper.AckMap.Load(value)
 		if portAlive == "alive" {
-			nextBestPort = value
+			PrimaryReplica = value
 			break
 		} else {
 			continue
@@ -47,7 +48,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 
 	response := models.MetadataResponse{
 		Handle:    chunkMetadata.Handle,
-		Location:  nextBestPort,
+		Location:  PrimaryReplica,
 		LastIndex: chunkMetadata.LastIndex,
 	}
 
@@ -59,9 +60,9 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 func HeartBeatManager(port int) models.ChunkServerState {
 	var reply models.ChunkServerState
 
-	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(port))
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 	if err != nil {
-		log.Print("[Master] Dialing error: ", err)
+		log.Println("[Master Heartbeat] Dialing error: ", err)
 		return reply
 	}
 	defer client.Close()
@@ -74,18 +75,10 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	log.Println("[Master] Send heartbeat request to chunk")
 	err = client.Call(fmt.Sprintf("%d.SendHeartBeat", port), heartBeatRequest, &reply)
 	if err != nil {
-		log.Println("[Master] Error calling RPC method: ", err)
+		log.Println("[Master ChunkServer SendHeartBeat] Error calling RPC method: ", err)
 	}
 
 	log.Printf("[Master] Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
-
-	/*
-		if port == 8090 {
-			var ack models.AckSigKill
-			client.Call("8090.Kill", 0, &ack)
-			fmt.Println("Killing 8090")
-		}
-	*/
 	return reply
 }
 
@@ -101,7 +94,7 @@ func HeartBeatTracker() {
 			}
 		}
 
-		time.Sleep(10 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -135,25 +128,27 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 
 			client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 			if err != nil {
-				log.Println("[Master] Error connecting to RPC server:", err)
-			}
+				log.Println("[Master Replication] Error connecting to RPC server:", err)
+				helper.AckMap.Store(port, "dead")
+				continue
+			} else {
+				addChunkArgs := models.Chunk{
+					ChunkHandle: args.Chunk.ChunkHandle,
+					ChunkIndex:  args.Chunk.ChunkIndex,
+					Data:        args.Chunk.Data,
+				}
 
-			addChunkArgs := models.Chunk{
-				ChunkHandle: args.Chunk.ChunkHandle,
-				ChunkIndex:  args.Chunk.ChunkIndex,
-				Data:        args.Chunk.Data,
-			}
+				// Reply with file uuid & last index of chunk
+				err = client.Call(fmt.Sprintf("%d.AddChunk", port), addChunkArgs, &output)
+				if err != nil {
+					log.Println("[Master ChunkServer AddChunk] Error calling RPC method: ", err)
+				}
+				client.Close()
 
-			// Reply with file uuid & last index of chunk
-			err = client.Call(fmt.Sprintf("%d.AddChunk", port), addChunkArgs, &output)
-			if err != nil {
-				log.Println("[Master] Error calling RPC method: ", err)
-			}
-			client.Close()
-
-			response = models.ChunkMetadata{
-				Handle:    output.FileID,
-				LastIndex: output.LastIndex,
+				response = models.ChunkMetadata{
+					Handle:    output.FileID,
+					LastIndex: output.LastIndex,
+				}
 			}
 		}
 	}
@@ -184,24 +179,38 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 
 func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error {
 	var appendArgs models.AppendData
+	var PrimaryReplica int
 
-	// The master node receives the client's request for appending data to the file and processes it.
-	// It verifies that the file exists and handles any naming conflicts or errors.
-	appendFile := mn.ChunkInfo[args.Filename]
-	if appendFile.Location == nil {
-		// If cannot be found generate new file, call create file
-		// mn.CreateFile()
+	// Verifies that the file exists
+	chunkMetadata := mn.ChunkInfo[args.Filename]
+	if chunkMetadata.Location == nil {
 		log.Println("[Master] File does not exist")
 	}
 
-	appendArgs = models.AppendData{ChunkMetadata: appendFile, Data: args.Data}
+	for _, value := range chunkMetadata.Location {
+		portAlive, _ := helper.AckMap.Load(value)
+		if portAlive == "alive" {
+			PrimaryReplica = value
+			break
+		} else {
+			continue
+		}
+	}
+
+	response := models.MetadataResponse{
+		Handle:    chunkMetadata.Handle,
+		Location:  PrimaryReplica,
+		LastIndex: chunkMetadata.LastIndex,
+	}
+
+	appendArgs = models.AppendData{MetadataResponse: response, Data: args.Data}
 
 	*reply = appendArgs
 
 	return nil
 }
 
-func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMetadata) error {
+func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.MetadataResponse) error {
 
 	if _, exists := mn.ChunkInfo[args.Append.Filename]; !exists {
 		log.Println("Key does not exist in the map")
@@ -228,15 +237,15 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.ChunkMeta
 
 		mn.ChunkInfo[args.Append.Filename] = metadata
 
-		*reply = models.ChunkMetadata{
+		*reply = models.MetadataResponse{
 			Handle:    uuidNew,
-			Location:  metadata.Location,
+			Location:  metadata.Location[0],
 			LastIndex: metadata.LastIndex,
 		}
 		return nil
 	}
 
-	*reply = models.ChunkMetadata{}
+	*reply = models.MetadataResponse{}
 
 	return nil
 }
@@ -290,7 +299,7 @@ func (mn *MasterNode) RenewLease(args models.LeaseData, reply *models.Lease) err
 		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} has already expired!\n", args.Owner, args.FileID)
 	}
 	// renew the lease if pass all check cases
-	existingLease.Expiration = time.Now().Add(args.Duration)
+	existingLease.Expiration = time.Now().Add(10 * time.Second)
 	existingLease.IsExpired = false
 	*reply = *existingLease
 	return nil
@@ -401,7 +410,7 @@ func (mn *MasterNode) InitializeChunkInfo() {
 }
 
 func (mn *MasterNode) RegisterChunkServers(args int, reply *string) error {
-	fmt.Println("Registering port: ", args)
+	logx.Logf("Registering port: %d", logx.FGBLUE, logx.BGWHITE, args)
 
 	helper.AckMap.Store(args, "alive")
 

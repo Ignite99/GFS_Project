@@ -7,8 +7,10 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/sutd_gfs_project/client"
+	"github.com/theritikchoure/logx"
 )
 
 type Task struct {
@@ -83,7 +85,8 @@ func runClient(c *client.Client, t Task) {
 }
 
 func run(c *client.Client) {
-	fmt.Printf("[Client %d] Running...\n", c.ID)
+	logx.Logf("[Client %d] Running...", logx.FGBLACK, logx.BGCYAN, c.ID)
+
 	// comment out operations that are not expected to be executed
 	if c.ID == 0 {
 		runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
@@ -93,13 +96,15 @@ func run(c *client.Client) {
 		return
 	}
 	if c.ID >= 1 {
+		time.Sleep(2 * time.Second)
 		// runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 		// runClient(c, Task{Operation: WRITE, Filename: FILE3, DataSize: 66560})
+		runClient(c, Task{Operation: WRITE, Filename: FILE2, DataSize: 65536})
 		runClient(c, Task{Operation: READ, Filename: FILE2})
 		runClient(c, Task{Operation: APPEND, Filename: FILE2, DataSize: 66000})
 		return
 	}
-	fmt.Printf("[Client %d] Finished running...\n", c.ID)
+	logx.Logf("[Client %d] Finished running...", logx.FGBLACK, logx.BGGREEN, c.ID)
 }
 
 func main() {

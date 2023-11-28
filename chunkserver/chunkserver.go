@@ -14,6 +14,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
+	"github.com/theritikchoure/logx"
 )
 
 //var portNumber int
@@ -60,7 +61,6 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 	var successResponse models.SuccessJSON
 
 	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
-	//log.Println("Chunk added: ", args)
 	logMessage := fmt.Sprintf("[ChunkServer %d] Chunks added: ", cs.portNum)
 
 	for _, c := range args {
@@ -84,7 +84,7 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 
 		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
 		if err != nil {
-			log.Printf("[ChunkServer %d] Error calling RPC method: %v\n", cs.portNum, err)
+			log.Printf("[ChunkServer %d Replication] Error calling RPC method: %v\n", cs.portNum, err)
 		}
 		client.Close()
 
@@ -151,8 +151,6 @@ func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
 
 	chunkUUID := args.ChunkMetadata.Handle
 
-	fmt.Println(args)
-
 	if args.ChunkIndex1 == args.ChunkIndex2 {
 		for _, chunk := range cs.storage {
 			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex == args.ChunkIndex1 {
@@ -175,7 +173,7 @@ func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
 // client to call this API when it wants to append data
 func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error {
 	var successResponse models.SuccessJSON
-	chunk := cs.GetChunk(args.ChunkMetadata.Handle, args.ChunkMetadata.LastIndex)
+	chunk := cs.GetChunk(args.MetadataResponse.Handle, args.MetadataResponse.LastIndex)
 	index := chunk.ChunkIndex
 	chunkSpace := helper.CHUNK_SIZE - len(chunk.Data)
 
@@ -190,7 +188,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 		// Make new chunks until all data is appended
 		for len(args.Data) > 0 {
 			index++
-			chunk = models.Chunk{ChunkHandle: args.ChunkMetadata.Handle, ChunkIndex: index, Data: []byte{}}
+			chunk = models.Chunk{ChunkHandle: args.MetadataResponse.Handle, ChunkIndex: index, Data: []byte{}}
 			if len(args.Data) <= chunkSpace {
 				chunk.Data = append(chunk.Data, args.Data...)
 				args.Data = nil
@@ -221,6 +219,11 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	return nil
 }
 
+func (cs *ChunkServer) Replication() error {
+
+	return nil
+}
+
 func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 	cs.killed = true
 	*reply = models.AckSigKill{Ack: true}
@@ -228,45 +231,13 @@ func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 	return nil
 }
 
-// client to call this API when it wants to truncate data
-// func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
-// 	// will add more logic here
-// 	chunkToTruncate := cs.GetChunk(chunkMetadata.Handle)
-// 	cs.DeleteChunk(chunkToTruncate, nil)
-
-// 	*reply = chunkToTruncate
-// 	return nil
-// }
-
-// master to call this when it needs to create new replica for a chunk
-// func (cs *ChunkServer) CreateNewReplica() {
-// 	chunkServerReplica := new(ChunkServer)
-// 	rpc.Register(chunkServerReplica)
-// 	chunkServerReplica.storage = cs.storage
-// }
-
 // command or API call for MAIN function to run chunk server
 func RunChunkServer(portNumber int) {
-	/*
-		logfile, err := os.OpenFile("../logs/chunkServer_"+strconv.Itoa(portNumber)+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			log.Fatal("[ChunkServer] Error opening log file:", err)
-		}
-		defer logfile.Close()
-		log.SetOutput(logfile)
-	*/
-
 	// initialize chunk server instance
 	chunkServerInstance := &ChunkServer{
 		storage: make([]models.Chunk, 0),
 		portNum: portNumber,
 	}
-	/*
-		err = rpc.Register(chunkServerInstance)
-		if err != nil {
-			fmt.Println(err)
-		}
-	*/
 	err := rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
 	if err != nil {
 		log.Fatalf("[ChunkServer %d] Failed to register to RPC: %v\n", portNumber, err)
@@ -298,21 +269,8 @@ func RunChunkServer(portNumber int) {
 	}
 }
 
-// starting function for this file --> will be moved to main.go
-/*
-func main() {
-	flag.IntVar(&portNumber, "portNumber", helper.CHUNK_SERVER_START_PORT, "Port number of Chunk Server.")
-	flag.Parse()
-
-	// go run chunkserver.go --portNumber 8090-8095
-	// Port number arguments
-
-	RunChunkServer(portNumber)
-}
-*/
-
 func (cs *ChunkServer) InitialiseChunks() {
-	fmt.Println("Initialised chunkServer Data")
+	logx.Logf("Initialised chunkServer Data", logx.FGBLUE, logx.BGWHITE)
 	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
 
 	chunk1 := models.Chunk{
@@ -349,7 +307,7 @@ func (cs *ChunkServer) Registration(portNum int) {
 
 	err = client.Call("MasterNode.RegisterChunkServers", portNum, &response)
 	if err != nil {
-		log.Printf("[ChunkServer %d] Error calling RPC method: %v\n", cs.portNum, err)
+		log.Printf("[ChunkServer %d Registration] Error calling RPC method: %v\n", cs.portNum, err)
 	}
 	client.Close()
 

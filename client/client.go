@@ -34,7 +34,7 @@ func (c *Client) requestChunkLocation(filename string, chunkIndex int) models.Me
 	var reply models.MetadataResponse
 	err := client.Call("MasterNode.GetChunkLocation", chunkRequest, &reply)
 	if err != nil {
-		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+		log.Printf("[Client %d GetChunkLocation] Error calling RPC method: %v\n", c.ID, err)
 	}
 
 	if chunkIndex != reply.LastIndex {
@@ -60,7 +60,7 @@ func (c *Client) readChunks(metadata models.MetadataResponse, index1 int, index2
 
 	err := client.Call(fmt.Sprintf("%d.ReadRange", metadata.Location), query, &reply)
 	if err != nil {
-		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+		log.Printf("[Client %d ReadRange] Error calling RPC method: %v\n", c.ID, err)
 	}
 
 	log.Printf("[Client %d] Received chunk: %v\n", c.ID, helper.TruncateOutput(reply))
@@ -79,7 +79,7 @@ func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseDat
 			return
 		}
 		elapsedTime := time.Since(timestamp)
-		if elapsedTime > time.Second*1 {
+		if elapsedTime > 1*time.Second {
 			if !c.OwnsLease {
 				err := mnClient.Call("MasterNode.CreateLease", leaseArgs, &leaseReply)
 				if err != nil {
@@ -92,6 +92,8 @@ func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseDat
 				}
 			}
 		}
+
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -122,25 +124,19 @@ func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
 	}
 	chunks := computeNumberOfChunks(int(fi.Size()))
 
-	// Read each chunk
 	chunkMetadata := c.requestChunkLocation(filename, chunks)
-	//chunkMetadata.Handle = helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
 	c.readChunks(chunkMetadata, firstIndex, LastIndex)
-	// TODO: update local copy here
 }
 
 // Append to a chunk in the chunk server
-// TODO: can append at any point within the existing file
 func (c *Client) AppendToFile(filename string, data []byte) {
 	appendArgs := models.Append{Filename: filename, Data: data}
 	var appendReply models.AppendData
-	// Sends a request to the master node. This request includes the file name it wants to append data to.
-	mnClient := c.dial(helper.MASTER_SERVER_PORT)
 
-	//Append
+	mnClient := c.dial(helper.MASTER_SERVER_PORT)
 	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
 	if err != nil {
-		log.Printf("[Client %d] Error calling RPC method: %v", c.ID, err)
+		log.Printf("[Client %d MasterNode Append] Error calling RPC method: %v", c.ID, err)
 	}
 	mnClient.Close()
 
@@ -148,10 +144,10 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 
 	// Append data to chunks
 	var reply models.Chunk
-	csClient := c.dial(appendReply.Location[0])
-	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.Location), appendReply, &reply)
+	csClient := c.dial(appendReply.MetadataResponse.Location)
+	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.MetadataResponse.Location), appendReply, &reply)
 	if err != nil {
-		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+		log.Printf("[Client %d ChunkServer Append] Error calling RPC method: %v\n", c.ID, err)
 	}
 	csClient.Close()
 	log.Printf("[Client %d] Successfully appended payload %v\n:", c.ID, helper.TruncateOutput(data))
@@ -175,7 +171,6 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 func (c *Client) CreateFile(filename string, data []byte) error {
 	leaseArgs := models.LeaseData{FileID: filename, Owner: c.ID, Duration: time.Second * 10}
 	var leaseReply models.Lease
-	// var replicationReply models.ReplicationResponse
 
 	// Sends a request to the master node. This request includes the file name it wants to append data to.
 	mnClient := c.dial(helper.MASTER_SERVER_PORT)
@@ -200,7 +195,7 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			}
 
 			// Compute number of chunks and prepare args
-			var metadata models.ChunkMetadata
+			var metadata models.MetadataResponse
 			chunks := computeNumberOfChunks(len(data))
 			createArgs := models.CreateData{
 				Append:         models.Append{Filename: filename, Data: data},
@@ -211,11 +206,11 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			mnClient := c.dial(helper.MASTER_SERVER_PORT)
 			err = mnClient.Call("MasterNode.CreateFile", createArgs, &metadata)
 			if err != nil {
-				log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+				log.Printf("[Client %d MasterNode CreateFile] Error calling RPC method: %v\n", c.ID, err)
 			}
 			mnClient.Close()
 
-			if metadata.Location == nil {
+			if metadata.Location == 0 {
 				log.Printf("[Client %d] File already exists in chunkserver\n", c.ID)
 				return errors.New("file already exists in chunkserver")
 			}
@@ -241,10 +236,10 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 			}
 
 			// Push chunks to chunk server
-			csClient := c.dial(metadata.Location[0])
-			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location[0]), chunkArray, &reply)
+			csClient := c.dial(metadata.Location)
+			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location), chunkArray, &reply)
 			if err != nil {
-				log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
+				log.Printf("[Client %d ChunkServer CreateFileChunks] Error calling RPC method: %v\n", c.ID, err)
 			}
 			csClient.Close()
 
@@ -271,7 +266,8 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 func (c *Client) dial(port int) *rpc.Client {
 	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 	if err != nil {
-		log.Fatalf("[Client %d] Error connecting to RPC server: %v", c.ID, err)
+		log.Printf("[Client %d] Error connecting to RPC server: %v", c.ID, err)
+		return nil
 	}
 	return client
 }

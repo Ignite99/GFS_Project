@@ -61,8 +61,8 @@ type Append struct {
 }
 
 type AppendData struct {
-	ChunkMetadata
-	Data []byte
+	MetadataResponse MetadataResponse
+	Data             []byte
 }
 
 type Replication struct {
