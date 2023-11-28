@@ -78,11 +78,13 @@ type ReplicationResponse struct {
 /* =========== Replication & Append ===========*/
 
 /* =========== Leases ===========*/
+const LeaseDuration = time.Second * 5 // in seconds
+
 type Lease struct {
-	FileID     string
-	Owner      int
-	Expiration time.Time
-	IsExpired  bool
+	ChunkHandle uuid.UUID
+	Owner       int // port number of chunk server
+	Expiration  time.Time
+	IsExpired   bool
 }
 
 type LeaseData struct {

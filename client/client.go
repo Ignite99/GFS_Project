@@ -7,7 +7,6 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
@@ -68,52 +67,6 @@ func (c *Client) readChunks(metadata models.MetadataResponse, index1 int, index2
 	return reply
 }
 
-/* =============================== Lease-related functions =============================== */
-
-// helper function, may block if lease is not released by other client
-func requestForLease(c *Client, mnClient *rpc.Client, leaseArgs *models.LeaseData, leaseReply *models.Lease) {
-	// request for lease first if it does not own lease
-	timestamp := time.Now()
-	for {
-		if c.OwnsLease {
-			return
-		}
-		elapsedTime := time.Since(timestamp)
-		if elapsedTime > 1*time.Second {
-			if !c.OwnsLease {
-				err := mnClient.Call("MasterNode.CreateLease", leaseArgs, &leaseReply)
-				if err != nil {
-					// wait for lease to be released --> haven't thought of a waiting loop function or some sort
-					log.Printf("[Client %d] Lease for file{%s} request rejected.\n", c.ID, leaseArgs.FileID)
-
-				} else {
-					c.OwnsLease = true
-					return
-				}
-			}
-		}
-
-		time.Sleep(1 * time.Second)
-	}
-}
-
-// Drop lease ownership once expired, request new lease from Master
-func checkLeaseExpiration(c *Client, leaseArgs *models.LeaseData, lease *models.Lease) {
-	for {
-		select {
-		case <-c.RequestDone:
-			log.Printf("[Client %d] Operation done. Stop lease timer\n", c.ID)
-			return
-		default:
-			elapsedTime := time.Since(lease.Expiration)
-			if elapsedTime >= leaseArgs.Duration {
-				c.LeaseExpiryChan <- true
-				return
-			}
-		}
-	}
-}
-
 /* =============================== File-related functions =============================== */
 
 func (c *Client) ReadFile(filename string, firstIndex int, LastIndex int) {
@@ -169,96 +122,65 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 }
 
 func (c *Client) CreateFile(filename string, data []byte) error {
-	leaseArgs := models.LeaseData{FileID: filename, Owner: c.ID, Duration: time.Second * 10}
-	var leaseReply models.Lease
-
-	// Sends a request to the master node. This request includes the file name it wants to append data to.
-	mnClient := c.dial(helper.MASTER_SERVER_PORT)
-	// request for lease first if it does not own lease
-	requestForLease(c, mnClient, &leaseArgs, &leaseReply)
-	mnClient.Close()
-	// spawn go routine to periodically check lease expiration
-	go checkLeaseExpiration(c, &leaseArgs, &leaseReply)
-
 	fmt.Println("CREATING FILE")
-
-	for {
-		select {
-		case <-c.LeaseExpiryChan:
-			log.Printf("[Client %d] Lease has expired", c.ID)
-			// requestForLease(c, mnClient, &leaseArgs, &leaseReply)
-		default:
-			// Create the file locally
-			err := os.WriteFile(filename, data, 0644)
-			if err != nil {
-				log.Printf("[Client %d] Error writing to file: %v\n", c.ID, err)
-			}
-
-			// Compute number of chunks and prepare args
-			var metadata models.MetadataResponse
-			chunks := computeNumberOfChunks(len(data))
-			createArgs := models.CreateData{
-				Append:         models.Append{Filename: filename, Data: data},
-				NumberOfChunks: chunks,
-			}
-
-			// Inform master server of new file
-			mnClient := c.dial(helper.MASTER_SERVER_PORT)
-			err = mnClient.Call("MasterNode.CreateFile", createArgs, &metadata)
-			if err != nil {
-				log.Printf("[Client %d MasterNode CreateFile] Error calling RPC method: %v\n", c.ID, err)
-			}
-			mnClient.Close()
-
-			if metadata.Location == 0 {
-				log.Printf("[Client %d] File already exists in chunkserver\n", c.ID)
-				return errors.New("file already exists in chunkserver")
-			}
-
-			// Split file data into chunks and prepare args
-			// Reply has the chunk uuid and location(last index)
-			var reply models.SuccessJSON
-			var chunkData []byte
-			chunkArray := make([]models.Chunk, chunks)
-			for i := 0; i < chunks; i++ {
-				if i == chunks-1 {
-					chunkData = data
-				} else {
-					chunkData = data[:helper.CHUNK_SIZE]
-					data = data[helper.CHUNK_SIZE:]
-				}
-				chunk := models.Chunk{
-					ChunkHandle: metadata.Handle,
-					ChunkIndex:  i,
-					Data:        chunkData,
-				}
-				chunkArray[i] = chunk
-			}
-
-			// Push chunks to chunk server
-			csClient := c.dial(metadata.Location)
-			err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location), chunkArray, &reply)
-			if err != nil {
-				log.Printf("[Client %d ChunkServer CreateFileChunks] Error calling RPC method: %v\n", c.ID, err)
-			}
-			csClient.Close()
-
-			log.Printf("[Client %d] Successfully created file in chunkserver: %v\n", c.ID, reply)
-
-			// release lease after operation done
-			var releaseReply int
-			mnClient = c.dial(helper.MASTER_SERVER_PORT)
-			err = mnClient.Call("MasterNode.ReleaseLease", leaseArgs, &releaseReply)
-			if err != nil {
-				log.Printf("[Client %d] Error releasing lease for file{%s}: %v\n", c.ID, filename, err)
-			}
-			c.OwnsLease = false
-			mnClient.Close()
-			c.RequestDone <- true
-
-			return nil
-		}
+	// Create the file locally
+	err := os.WriteFile(filename, data, 0644)
+	if err != nil {
+		log.Printf("[Client %d] Error writing to file: %v\n", c.ID, err)
 	}
+
+	// Compute number of chunks and prepare args
+	var metadata models.MetadataResponse
+	chunks := computeNumberOfChunks(len(data))
+	createArgs := models.CreateData{
+		Append:         models.Append{Filename: filename, Data: data},
+		NumberOfChunks: chunks,
+	}
+
+	// Inform master server of new file
+	mnClient := c.dial(helper.MASTER_SERVER_PORT)
+	err = mnClient.Call("MasterNode.CreateFile", createArgs, &metadata)
+	if err != nil {
+		log.Printf("[Client %d MasterNode CreateFile] Error calling RPC method: %v\n", c.ID, err)
+	}
+	mnClient.Close()
+
+	if metadata.Location == 0 {
+		log.Printf("[Client %d] File already exists in chunkserver\n", c.ID)
+		return errors.New("file already exists in chunkserver")
+	}
+
+	// Split file data into chunks and prepare args
+	// Reply has the chunk uuid and location(last index)
+	var reply models.SuccessJSON
+	var chunkData []byte
+	chunkArray := make([]models.Chunk, chunks)
+	for i := 0; i < chunks; i++ {
+		if i == chunks-1 {
+			chunkData = data
+		} else {
+			chunkData = data[:helper.CHUNK_SIZE]
+			data = data[helper.CHUNK_SIZE:]
+		}
+		chunk := models.Chunk{
+			ChunkHandle: metadata.Handle,
+			ChunkIndex:  i,
+			Data:        chunkData,
+		}
+		chunkArray[i] = chunk
+	}
+
+	// Push chunks to chunk server
+	csClient := c.dial(metadata.Location)
+	err = csClient.Call(fmt.Sprintf("%d.CreateFileChunks", metadata.Location), chunkArray, &reply)
+	if err != nil {
+		log.Printf("[Client %d ChunkServer CreateFileChunks] Error calling RPC method: %v\n", c.ID, err)
+	}
+	csClient.Close()
+
+	log.Printf("[Client %d] Successfully created file in chunkserver: %v\n", c.ID, reply)
+
+	return nil
 }
 
 /* =============================== Helper functions =============================== */

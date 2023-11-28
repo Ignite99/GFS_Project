@@ -108,8 +108,6 @@ func run(c *client.Client) {
 }
 
 func main() {
-	// rand.Seed(time.Now().UnixNano())
-
 	// command line arguments
 	var numOfClients int
 	flag.IntVar(&numOfClients, "numOfClients", 3, "Number of clients running.")
