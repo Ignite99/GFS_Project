@@ -61,7 +61,7 @@ type Append struct {
 }
 
 type AppendData struct {
-	ChunkMetadata
+	MetadataResponse
 	Data []byte
 }
 

@@ -148,7 +148,7 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 
 	// Append data to chunks
 	var reply models.Chunk
-	csClient := c.dial(appendReply.Location[0])
+	csClient := c.dial(appendReply.Location)
 	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.Location), appendReply, &reply)
 	if err != nil {
 		log.Printf("[Client %d] Error calling RPC method: %v\n", c.ID, err)
@@ -271,7 +271,7 @@ func (c *Client) CreateFile(filename string, data []byte) error {
 func (c *Client) dial(port int) *rpc.Client {
 	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
 	if err != nil {
-		log.Fatalf("[Client %d] Error connecting to RPC server: %v", c.ID, err)
+		log.Printf("[Client %d] Error connecting to RPC server: %v", c.ID, err)
 	}
 	return client
 }

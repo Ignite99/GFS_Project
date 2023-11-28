@@ -175,7 +175,7 @@ func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
 // client to call this API when it wants to append data
 func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error {
 	var successResponse models.SuccessJSON
-	chunk := cs.GetChunk(args.ChunkMetadata.Handle, args.ChunkMetadata.LastIndex)
+	chunk := cs.GetChunk(args.MetadataResponse.Handle, args.MetadataResponse.LastIndex)
 	index := chunk.ChunkIndex
 	chunkSpace := helper.CHUNK_SIZE - len(chunk.Data)
 
@@ -190,7 +190,7 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 		// Make new chunks until all data is appended
 		for len(args.Data) > 0 {
 			index++
-			chunk = models.Chunk{ChunkHandle: args.ChunkMetadata.Handle, ChunkIndex: index, Data: []byte{}}
+			chunk = models.Chunk{ChunkHandle: args.MetadataResponse.Handle, ChunkIndex: index, Data: []byte{}}
 			if len(args.Data) <= chunkSpace {
 				chunk.Data = append(chunk.Data, args.Data...)
 				args.Data = nil
@@ -228,16 +228,6 @@ func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 	return nil
 }
 
-// client to call this API when it wants to truncate data
-// func (cs *ChunkServer) Truncate(chunkMetadata models.ChunkMetadata, reply *models.Chunk) error {
-// 	// will add more logic here
-// 	chunkToTruncate := cs.GetChunk(chunkMetadata.Handle)
-// 	cs.DeleteChunk(chunkToTruncate, nil)
-
-// 	*reply = chunkToTruncate
-// 	return nil
-// }
-
 // master to call this when it needs to create new replica for a chunk
 // func (cs *ChunkServer) CreateNewReplica() {
 // 	chunkServerReplica := new(ChunkServer)
@@ -247,26 +237,12 @@ func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 
 // command or API call for MAIN function to run chunk server
 func RunChunkServer(portNumber int) {
-	/*
-		logfile, err := os.OpenFile("../logs/chunkServer_"+strconv.Itoa(portNumber)+".log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			log.Fatal("[ChunkServer] Error opening log file:", err)
-		}
-		defer logfile.Close()
-		log.SetOutput(logfile)
-	*/
-
 	// initialize chunk server instance
 	chunkServerInstance := &ChunkServer{
 		storage: make([]models.Chunk, 0),
 		portNum: portNumber,
 	}
-	/*
-		err = rpc.Register(chunkServerInstance)
-		if err != nil {
-			fmt.Println(err)
-		}
-	*/
+
 	err := rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
 	if err != nil {
 		log.Fatalf("[ChunkServer %d] Failed to register to RPC: %v\n", portNumber, err)

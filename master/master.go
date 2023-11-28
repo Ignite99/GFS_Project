@@ -27,7 +27,7 @@ type MasterNode struct {
 /* ============================================ HELPER FUNCTIONS  ===========================================*/
 // Used for read for chunkserver
 func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.MetadataResponse) error {
-	var nextBestPort int
+	var PrimaryReplica int
 
 	// Loads the filename + chunk index to load metadata from key
 	chunkMetadata := mn.ChunkInfo[args.Filename]
@@ -38,7 +38,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 	for _, value := range chunkMetadata.Location {
 		portAlive, _ := helper.AckMap.Load(value)
 		if portAlive == "alive" {
-			nextBestPort = value
+			PrimaryReplica = value
 			break
 		} else {
 			continue
@@ -47,7 +47,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 
 	response := models.MetadataResponse{
 		Handle:    chunkMetadata.Handle,
-		Location:  nextBestPort,
+		Location:  PrimaryReplica,
 		LastIndex: chunkMetadata.LastIndex,
 	}
 
@@ -184,17 +184,34 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 
 func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error {
 	var appendArgs models.AppendData
+	var PrimaryReplica int
 
 	// The master node receives the client's request for appending data to the file and processes it.
 	// It verifies that the file exists and handles any naming conflicts or errors.
-	appendFile := mn.ChunkInfo[args.Filename]
-	if appendFile.Location == nil {
+	chunkMetadata := mn.ChunkInfo[args.Filename]
+	if chunkMetadata.Location == nil {
 		// If cannot be found generate new file, call create file
 		// mn.CreateFile()
 		log.Println("[Master] File does not exist")
 	}
 
-	appendArgs = models.AppendData{ChunkMetadata: appendFile, Data: args.Data}
+	for _, value := range chunkMetadata.Location {
+		portAlive, _ := helper.AckMap.Load(value)
+		if portAlive == "alive" {
+			PrimaryReplica = value
+			break
+		} else {
+			continue
+		}
+	}
+
+	response := models.MetadataResponse{
+		Handle:    chunkMetadata.Handle,
+		Location:  PrimaryReplica,
+		LastIndex: chunkMetadata.LastIndex,
+	}
+
+	appendArgs = models.AppendData{MetadataResponse: response, Data: args.Data}
 
 	*reply = appendArgs
 
