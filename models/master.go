@@ -81,8 +81,6 @@ type ReplicationResponse struct {
 /* =========== Leases ===========*/
 const LeaseDuration = time.Second * 5 // in seconds
 
-const LeaseDuration = time.Second * 5 // in seconds
-
 type Lease struct {
 	Owner      int // port number of chunk server
 	Expiration time.Time
