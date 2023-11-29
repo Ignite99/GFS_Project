@@ -28,14 +28,14 @@ type MasterNode struct {
 
 /* ============================================ HELPER FUNCTIONS  ===========================================*/
 // simple algorithm to find primary replica (find the first alive chunk server)
-func (mn *MasterNode) findPrimaryReplica(locations []int, chunkHandle uuid.UUID) int {
+func (mn *MasterNode) findPrimaryReplica(locations []int, chunkHandle uuid.UUID, filename string) int {
 	var PrimaryReplicaPort int
 	for _, value := range locations {
 		portAlive, _ := helper.AckMap.Load(value)
 		if portAlive == "alive" {
 			PrimaryReplicaPort = value
 			log.Printf("[Master] Chosen primary replica at chunk server port=%d for chunkHandle {%v}\n", PrimaryReplicaPort, chunkHandle)
-			mn.GrantLease(PrimaryReplicaPort, models.LeaseDuration)
+			mn.GrantLease(PrimaryReplicaPort, models.LeaseDuration, filename)
 			mn.PrimaryReplicaMapping.Store(chunkHandle, PrimaryReplicaPort)
 			return PrimaryReplicaPort
 		} else {
@@ -66,7 +66,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 		}
 	} else {
 		// primary replica does not exist yet, find one
-		PrimaryReplicaPort = mn.findPrimaryReplica(chunkMetadata.Location, chunkHandle)
+		PrimaryReplicaPort = mn.findPrimaryReplica(chunkMetadata.Location, chunkHandle, args.Filename)
 	}
 
 	response := models.MetadataResponse{
@@ -281,7 +281,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.MetadataR
 }
 
 /* ============================================ LEASE FUNCTIONS  ===========================================*/
-func (mn *MasterNode) GrantLease(portNum int, duration time.Duration) {
+func (mn *MasterNode) GrantLease(portNum int, duration time.Duration, filename string) {
 	// check if lease already exists for the chunk server
 	if _, ok := mn.LeaseMapping.Load(portNum); ok {
 		// lease already exists, no need to grant new lease
@@ -304,7 +304,7 @@ func (mn *MasterNode) GrantLease(portNum int, duration time.Duration) {
 	}
 	csClient.Close()
 	// start lease timer
-	go mn.CheckLeaseExpiry(portNum, newLease)
+	go mn.CheckLeaseExpiry(portNum, newLease, filename)
 }
 
 func (mn *MasterNode) RenewLease(primaryReplicaPort int) {
@@ -352,19 +352,7 @@ func (mn *MasterNode) RenewLease(primaryReplicaPort int) {
 	}
 }
 
-// func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
-// 	// check if lease exists or not
-// 	_, ok := mn.LeaseMapping.Load(args.FileID)
-// 	if !ok {
-// 		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} does not exist\n", args.Owner, args.FileID)
-// 	}
-// 	mn.LeaseMapping.Delete(args.FileID)
-// 	log.Printf("[Master] Released lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
-// 	*reply = 1
-// 	return nil
-// }
-
-func (mn *MasterNode) CheckLeaseExpiry(primaryReplicaPort int, lease *models.Lease) {
+func (mn *MasterNode) CheckLeaseExpiry(primaryReplicaPort int, lease *models.Lease, filename string) {
 	// foundExpiredLease := false
 	log.Printf("[Master LeaseTimer] Started timer for Primary Replica {%d}\n", primaryReplicaPort)
 	for {
@@ -372,15 +360,14 @@ func (mn *MasterNode) CheckLeaseExpiry(primaryReplicaPort int, lease *models.Lea
 		if elapsedTime > models.LeaseDuration {
 			log.Printf("[Master LeaseTimer] Lease for Primary Replica {%d} has expired!\n", primaryReplicaPort)
 			// lease has expired, remove it
-			mn.RemoveLease(primaryReplicaPort, lease)
-			log.Printf("[Master LeaseTimer] Removed lease for Primary Replica {%d}, stop timer\n", primaryReplicaPort)
+			mn.RemoveLease(primaryReplicaPort, lease, filename)
 			// exit from goroutine
 			return
 		}
 	}
 }
 
-func (mn *MasterNode) RemoveLease(primaryReplicaPort int, lease *models.Lease) {
+func (mn *MasterNode) RemoveLease(primaryReplicaPort int, lease *models.Lease, filename string) {
 	mn.LeaseMapping.Delete(primaryReplicaPort)
 	chunkHandles := make([]uuid.UUID, 0)
 	// find all chunk handles related to this primary replica
@@ -394,10 +381,14 @@ func (mn *MasterNode) RemoveLease(primaryReplicaPort int, lease *models.Lease) {
 		} else {
 			log.Printf("[Master LeaseTimer] Key, value type error\n")
 		}
+		log.Printf("[Master LeaseTimer] Removed lease for Primary Replica {%d}, stop timer\n", primaryReplicaPort)
 		return true
 	})
 	for _, chunkHandle := range chunkHandles {
 		mn.PrimaryReplicaMapping.Delete(chunkHandle)
+		// find another chunk server to replace as primary replica
+		newPrimaryReplica := mn.findPrimaryReplica(mn.ChunkInfo[filename].Location, chunkHandle, filename)
+		log.Printf("[Master] New Primary Replica set at Chunk Server {%d}\n", newPrimaryReplica)
 	}
 	// send revoke to primary replica
 	var reply int
