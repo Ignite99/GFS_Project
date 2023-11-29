@@ -1,6 +1,8 @@
 module github.com/sutd_gfs_project
 
-go 1.20
+go 1.21.0
+
+toolchain go1.21.1
 
 require (
 	github.com/satori/go.uuid v1.2.0
