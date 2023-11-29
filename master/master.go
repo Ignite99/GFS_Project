@@ -339,12 +339,17 @@ func (mn *MasterNode) RenewLease(primaryReplicaPort int) {
 		Expiration: time.Now().Add(models.LeaseDuration),
 		IsExpired:  existingLease.IsExpired,
 	}
-	csClient := mn.dial(primaryReplicaPort)
-	err := csClient.Call(fmt.Sprintf("%d.RefreshLease", primaryReplicaPort), updatedLease, &reply)
+	csClient, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(primaryReplicaPort))
 	if err != nil {
-		log.Printf("[Master] Error refreshing lease for Primary Replica with port=%d: %v\n", primaryReplicaPort, err)
+		// primary replica is dead
+		log.Printf("[Master] Unable to send RefreshLease ACK to dead Primary Replica {%d}\n", primaryReplicaPort)
+	} else {
+		err = csClient.Call(fmt.Sprintf("%d.RefreshLease", primaryReplicaPort), updatedLease, &reply)
+		if err != nil {
+			log.Printf("[Master] Error refreshing lease for Primary Replica with port=%d: %v\n", primaryReplicaPort, err)
+		}
+		csClient.Close()
 	}
-	csClient.Close()
 }
 
 // func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
@@ -366,36 +371,46 @@ func (mn *MasterNode) CheckLeaseExpiry(primaryReplicaPort int, lease *models.Lea
 		elapsedTime := time.Now().Sub(lease.Expiration)
 		if elapsedTime > models.LeaseDuration {
 			log.Printf("[Master LeaseTimer] Lease for Primary Replica {%d} has expired!\n", primaryReplicaPort)
-			// lease has expired
-			mn.LeaseMapping.Delete(primaryReplicaPort)
-			chunkHandles := make([]uuid.UUID, 0)
-			// find all chunk handles related to this primary replica
-			mn.PrimaryReplicaMapping.Range(func(key, value interface{}) bool {
-				chunkHandleKey, ok1 := key.(uuid.UUID)
-				primaryReplicaVal, ok2 := value.(int)
-				if ok1 && ok2 {
-					if primaryReplicaVal == primaryReplicaPort {
-						chunkHandles = append(chunkHandles, chunkHandleKey)
-					}
-				} else {
-					log.Printf("[Master LeaseTimer] Key, value type error\n")
-				}
-				return true
-			})
-			for _, chunkHandle := range chunkHandles {
-				mn.PrimaryReplicaMapping.Delete(chunkHandle)
-			}
-			// send revoke to primary replica
-			var reply int
-			csClient := mn.dial(primaryReplicaPort)
-			err := csClient.Call(fmt.Sprintf("%d.RevokeLease", primaryReplicaPort), 1, &reply)
-			if err != nil {
-				log.Printf("[Master LeaseTimer] Error revoking lease for Primary Replica {%d}: %v\n", primaryReplicaPort, err)
-			}
-			csClient.Close()
+			// lease has expired, remove it
+			mn.RemoveLease(primaryReplicaPort, lease)
+			log.Printf("[Master LeaseTimer] Removed lease for Primary Replica {%d}, stop timer\n", primaryReplicaPort)
 			// exit from goroutine
 			return
 		}
+	}
+}
+
+func (mn *MasterNode) RemoveLease(primaryReplicaPort int, lease *models.Lease) {
+	mn.LeaseMapping.Delete(primaryReplicaPort)
+	chunkHandles := make([]uuid.UUID, 0)
+	// find all chunk handles related to this primary replica
+	mn.PrimaryReplicaMapping.Range(func(key, value interface{}) bool {
+		chunkHandleKey, ok1 := key.(uuid.UUID)
+		primaryReplicaVal, ok2 := value.(int)
+		if ok1 && ok2 {
+			if primaryReplicaVal == primaryReplicaPort {
+				chunkHandles = append(chunkHandles, chunkHandleKey)
+			}
+		} else {
+			log.Printf("[Master LeaseTimer] Key, value type error\n")
+		}
+		return true
+	})
+	for _, chunkHandle := range chunkHandles {
+		mn.PrimaryReplicaMapping.Delete(chunkHandle)
+	}
+	// send revoke to primary replica
+	var reply int
+	csClient, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(primaryReplicaPort))
+	if err != nil {
+		// primary replica is dead
+		log.Printf("[Master LeaseTimer] Unable to send revoke to dead Primary Replica {%d}\n", primaryReplicaPort)
+	} else {
+		err = csClient.Call(fmt.Sprintf("%d.RevokeLease", primaryReplicaPort), 1, &reply)
+		if err != nil {
+			log.Printf("[Master LeaseTimer] Error revoking lease for Primary Replica {%d}: %v\n", primaryReplicaPort, err)
+		}
+		csClient.Close()
 	}
 }
 
