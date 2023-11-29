@@ -18,17 +18,37 @@ import (
 )
 
 type MasterNode struct {
-	ChunkInfo       map[string]models.ChunkMetadata
-	Chunks          sync.Map
-	LeaseMapping    sync.Map
-	StorageLocation sync.Map
-	Mu              sync.Mutex
+	ChunkInfo             map[string]models.ChunkMetadata
+	Chunks                sync.Map
+	PrimaryReplicaMapping sync.Map // maps a ChunkHandle to a primary replica
+	LeaseMapping          sync.Map // maps a primary replica to its lease
+	StorageLocation       sync.Map
+	Mu                    sync.Mutex
 }
 
 /* ============================================ HELPER FUNCTIONS  ===========================================*/
+// simple algorithm to find primary replica (find the first alive chunk server)
+func (mn *MasterNode) findPrimaryReplica(locations []int, chunkHandle uuid.UUID) int {
+	var PrimaryReplicaPort int
+	for _, value := range locations {
+		portAlive, _ := helper.AckMap.Load(value)
+		if portAlive == "alive" {
+			PrimaryReplicaPort = value
+			log.Printf("[Master] Chosen primary replica at chunk server port=%d for chunkHandle {%v}\n", PrimaryReplicaPort, chunkHandle)
+			mn.GrantLease(PrimaryReplicaPort, models.LeaseDuration)
+			mn.PrimaryReplicaMapping.Store(chunkHandle, PrimaryReplicaPort)
+			return PrimaryReplicaPort
+		} else {
+			continue
+		}
+	}
+	// no available primary replica (all chunk servers dead)
+	return -1
+}
+
 // Used for read for chunkserver
 func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *models.MetadataResponse) error {
-	var PrimaryReplica int
+	var PrimaryReplicaPort int
 
 	// Loads the filename + chunk index to load metadata from key
 	chunkMetadata := mn.ChunkInfo[args.Filename]
@@ -36,19 +56,22 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 		return helper.ErrChunkNotFound
 	}
 
-	for _, value := range chunkMetadata.Location {
-		portAlive, _ := helper.AckMap.Load(value)
-		if portAlive == "alive" {
-			PrimaryReplica = value
-			break
-		} else {
-			continue
+	chunkHandle := chunkMetadata.Handle
+	value, exists := mn.PrimaryReplicaMapping.Load(chunkHandle)
+	if exists {
+		if primaryReplicaVal, ok := value.(int); ok {
+			// primary replica already exists
+			PrimaryReplicaPort = primaryReplicaVal
+			log.Printf("[Master] Found existing primary replica with port=%d\n", PrimaryReplicaPort)
 		}
+	} else {
+		// primary replica does not exist yet, find one
+		PrimaryReplicaPort = mn.findPrimaryReplica(chunkMetadata.Location, chunkHandle)
 	}
 
 	response := models.MetadataResponse{
 		Handle:    chunkMetadata.Handle,
-		Location:  PrimaryReplica,
+		Location:  PrimaryReplicaPort,
 		LastIndex: chunkMetadata.LastIndex,
 	}
 
@@ -57,7 +80,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 	return nil
 }
 
-func HeartBeatManager(port int) models.ChunkServerState {
+func HeartBeatManager(mn *MasterNode, port int) models.ChunkServerState {
 	var reply models.ChunkServerState
 
 	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
@@ -76,17 +99,24 @@ func HeartBeatManager(port int) models.ChunkServerState {
 	err = client.Call(fmt.Sprintf("%d.SendHeartBeat", port), heartBeatRequest, &reply)
 	if err != nil {
 		log.Println("[Master ChunkServer SendHeartBeat] Error calling RPC method: ", err)
+	} else {
+		log.Printf("[Master] Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
+		if reply.IsPrimaryReplica {
+			// renew primary replica's lease
+			_, exists := mn.LeaseMapping.Load(port)
+			if exists {
+				mn.RenewLease(port)
+			}
+		}
 	}
-
-	log.Printf("[Master] Heartbeat from ChunkServer %d, Status: %s\n", reply.Port, reply.Status)
 	return reply
 }
 
 // Will iterate through all chunk servers initialised and ping server with heartbeatManager
-func HeartBeatTracker() {
+func HeartBeatTracker(mn *MasterNode) {
 	for {
 		for _, port := range helper.ChunkServerPorts {
-			output := HeartBeatManager(port)
+			output := HeartBeatManager(mn, port)
 			if output.Status != "alive" {
 				helper.AckMap.Store(port, "dead")
 
@@ -251,96 +281,122 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.MetadataR
 }
 
 /* ============================================ LEASE FUNCTIONS  ===========================================*/
-// API called by client
-func (mn *MasterNode) CreateLease(args models.LeaseData, reply *models.Lease) error {
-	mn.Mu.Lock()
-	defer mn.Mu.Unlock()
-	// check if lease already exists for the fileID
-	if _, ok := mn.LeaseMapping.Load(args.FileID); ok {
-		// lease already exists, do not grant new lease
-		return fmt.Errorf("[Master] Hey Client%d, lease already exists for fileID {%s}\n", args.Owner, args.FileID)
+func (mn *MasterNode) GrantLease(portNum int, duration time.Duration) {
+	// check if lease already exists for the chunk server
+	if _, ok := mn.LeaseMapping.Load(portNum); ok {
+		// lease already exists, no need to grant new lease
+		log.Printf("[Master] Lease already exists for Primary Replica {%d}\n", portNum)
+		return
 	}
 	newLease := &models.Lease{
-		FileID:     args.FileID,
-		Owner:      args.Owner,
-		Expiration: time.Now().Add(args.Duration), //Expiry Time
+		Owner:      portNum,
+		Expiration: time.Now().Add(duration), // Expiry Time
 		IsExpired:  false,
 	}
-	mn.LeaseMapping.Store(args.FileID, newLease)
-	log.Printf("[Master] Created lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
-	// log.Printf("[Master] Current leases: %v\n", mn.LeaseMapping)
-	*reply = models.Lease{
-		FileID:     newLease.FileID,
-		Owner:      newLease.Owner,
-		Expiration: newLease.Expiration,
-		IsExpired:  newLease.IsExpired,
+	mn.LeaseMapping.Store(portNum, newLease)
+	log.Printf("[Master] Created lease for Primary Replica {%d}\n", portNum)
+	// grant lease to chunk server serving as new primary replica
+	csClient := mn.dial(portNum)
+	var reply int
+	err := csClient.Call(fmt.Sprintf("%d.GetLease", portNum), newLease, &reply)
+	if err != nil {
+		log.Printf("[Master] Error granting lease to Primary Replica {%d}: %v\n", portNum, err)
 	}
-	// triggers a warning 'cause I'm copying a lock value (then how else to do it sia for API calls...)
-	// placed the lock already for this function
-	return nil
+	csClient.Close()
+	// start lease timer
+	go mn.CheckLeaseExpiry(portNum, newLease)
 }
 
-func (mn *MasterNode) RenewLease(args models.LeaseData, reply *models.Lease) error {
-	mn.Mu.Lock()
-	defer mn.Mu.Unlock()
+func (mn *MasterNode) RenewLease(primaryReplicaPort int) {
 	// check first if lease exist or not
-	leaseValue, ok := mn.LeaseMapping.Load(args.FileID)
+	leaseValue, ok := mn.LeaseMapping.Load(primaryReplicaPort)
 	if !ok {
-		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} does not exist\n", args.Owner, args.FileID)
+		log.Printf("[Master] Lease for Primary Replica {%d} does not exist\n", primaryReplicaPort)
+		return
 	}
 	// check if lease type is correct
 	existingLease, ok := leaseValue.(*models.Lease)
 	if !ok {
-		return fmt.Errorf("[Master] Hey Client%d, unexpected type found in lease for fileID {%s}\n", args.Owner, args.FileID)
+		log.Printf("[Master] Unexpected type found in lease for Primary Replica {%d}\n", primaryReplicaPort)
+		return
 	}
-	// check if the existing lease hs expired or not
+	// check if the existing lease has expired or not
 	if existingLease.IsExpired || time.Now().After(existingLease.Expiration) {
 		existingLease.IsExpired = true
-		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} has already expired!\n", args.Owner, args.FileID)
+		// if lease has expired, there might be the case that another primary replica has been chosen
+		// will this case even be reached if we have a goroutine timer?
+		log.Printf("[Master] Lease for Primary Replica {%d} has already expired!\n", primaryReplicaPort)
+		return
 	}
 	// renew the lease if pass all check cases
-	existingLease.Expiration = time.Now().Add(10 * time.Second)
+	log.Printf("[Master] Renewed lease for Primary Replica {%d}\n", primaryReplicaPort)
+	existingLease.Expiration = time.Now().Add(models.LeaseDuration)
 	existingLease.IsExpired = false
-	*reply = *existingLease
-	return nil
-}
-
-func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
-	mn.Mu.Lock()
-	defer mn.Mu.Unlock()
-	// check if lease exists or not
-	_, ok := mn.LeaseMapping.Load(args.FileID)
-	if !ok {
-		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} does not exist\n", args.Owner, args.FileID)
+	// send RenewLease ACK to primary replica
+	var reply int
+	updatedLease := models.Lease{
+		Owner:      existingLease.Owner,
+		Expiration: time.Now().Add(models.LeaseDuration),
+		IsExpired:  existingLease.IsExpired,
 	}
-	mn.LeaseMapping.Delete(args.FileID)
-	log.Printf("[Master] Released lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
-	// log.Printf("[Master] Lease released: %v\n", value)
-	*reply = 1
-	return nil
+	csClient := mn.dial(primaryReplicaPort)
+	err := csClient.Call(fmt.Sprintf("%d.RefreshLease", primaryReplicaPort), updatedLease, &reply)
+	if err != nil {
+		log.Printf("[Master] Error refreshing lease for Primary Replica with port=%d: %v\n", primaryReplicaPort, err)
+	}
+	csClient.Close()
 }
 
-func (mn *MasterNode) CheckForExpiredLeases() {
-	mn.Mu.Lock()
-	defer mn.Mu.Unlock()
+// func (mn *MasterNode) ReleaseLease(args models.LeaseData, reply *int) error {
+// 	// check if lease exists or not
+// 	_, ok := mn.LeaseMapping.Load(args.FileID)
+// 	if !ok {
+// 		return fmt.Errorf("[Master] Hey Client%d, lease for fileID {%s} does not exist\n", args.Owner, args.FileID)
+// 	}
+// 	mn.LeaseMapping.Delete(args.FileID)
+// 	log.Printf("[Master] Released lease for Client%d for fileId{%s}\n", args.Owner, args.FileID)
+// 	*reply = 1
+// 	return nil
+// }
 
-	// value type is interface as it is generic
-	mn.LeaseMapping.Range(func(key, value interface{}) bool {
-		fileID := key.(string)
-		lease, ok := value.(*models.Lease)
-		if !ok {
-			// wrong type for lease value obtained, move on to next entry
-			return true
+func (mn *MasterNode) CheckLeaseExpiry(primaryReplicaPort int, lease *models.Lease) {
+	// foundExpiredLease := false
+	log.Printf("[Master LeaseTimer] Started timer for Primary Replica {%d}\n", primaryReplicaPort)
+	for {
+		elapsedTime := time.Now().Sub(lease.Expiration)
+		if elapsedTime > models.LeaseDuration {
+			log.Printf("[Master LeaseTimer] Lease for Primary Replica {%d} has expired!\n", primaryReplicaPort)
+			// lease has expired
+			mn.LeaseMapping.Delete(primaryReplicaPort)
+			chunkHandles := make([]uuid.UUID, 0)
+			// find all chunk handles related to this primary replica
+			mn.PrimaryReplicaMapping.Range(func(key, value interface{}) bool {
+				chunkHandleKey, ok1 := key.(uuid.UUID)
+				primaryReplicaVal, ok2 := value.(int)
+				if ok1 && ok2 {
+					if primaryReplicaVal == primaryReplicaPort {
+						chunkHandles = append(chunkHandles, chunkHandleKey)
+					}
+				} else {
+					log.Printf("[Master LeaseTimer] Key, value type error\n")
+				}
+				return true
+			})
+			for _, chunkHandle := range chunkHandles {
+				mn.PrimaryReplicaMapping.Delete(chunkHandle)
+			}
+			// send revoke to primary replica
+			var reply int
+			csClient := mn.dial(primaryReplicaPort)
+			err := csClient.Call(fmt.Sprintf("%d.RevokeLease", primaryReplicaPort), 1, &reply)
+			if err != nil {
+				log.Printf("[Master LeaseTimer] Error revoking lease for Primary Replica {%d}: %v\n", primaryReplicaPort, err)
+			}
+			csClient.Close()
+			// exit from goroutine
+			return
 		}
-		// check if current lease has expired or not
-		if lease.IsExpired || time.Now().After(lease.Expiration) {
-			// lease has expired, release it
-			mn.LeaseMapping.Delete(fileID)
-			log.Printf("[Master]: Lease for fileID {%s} has expired and is released\n", fileID)
-			notifyClientAboutExpiredLease(lease, fileID)
-		}
-		return true
-	})
+	}
 }
 
 // edge case for now
@@ -349,6 +405,15 @@ func notifyClientAboutExpiredLease(lease *models.Lease, fileID string) {
 	// haven't implement
 	log.Printf("[Master] Notified Client%d of expired lease for fileId{%s}\n", lease.Owner, fileID)
 	return
+}
+
+func (mn *MasterNode) dial(port int) *rpc.Client {
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
+	if err != nil {
+		log.Printf("[Master] Error connecting to RPC server: %v", err)
+		return nil
+	}
+	return client
 }
 
 func main() {
@@ -373,7 +438,7 @@ func main() {
 	}
 	defer listener.Close()
 
-	go HeartBeatTracker()
+	go HeartBeatTracker(gfsMasterNode)
 
 	log.Printf("[Master] RPC server is listening on port %d\n", helper.MASTER_SERVER_PORT)
 

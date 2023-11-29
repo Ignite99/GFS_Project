@@ -20,9 +20,11 @@ import (
 //var portNumber int
 
 type ChunkServer struct {
-	storage []models.Chunk
-	portNum int
-	killed  bool
+	Storage         []models.Chunk
+	PortNum         int
+	Lease           models.Lease
+	LeaseExpiryChan chan bool
+	Killed          bool
 }
 
 /* =============================== Chunk Storage functions =============================== */
@@ -33,7 +35,7 @@ func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID, chunkLocation int) models
 	var chunkRetrieved models.Chunk
 
 	// Only iterate through those with relevant uuid. Will only enter upon detecting ChunkLocation is similar to chunkIndex
-	for _, val := range cs.storage {
+	for _, val := range cs.Storage {
 		if val.ChunkHandle == chunkHandle && val.ChunkIndex == chunkLocation {
 			chunkRetrieved = val
 			break
@@ -46,9 +48,9 @@ func (cs *ChunkServer) GetChunk(chunkHandle uuid.UUID, chunkLocation int) models
 // add new chunk to storage
 func (cs *ChunkServer) AddChunk(args models.Chunk, reply *models.SuccessJSON) error {
 	log.Println("============== ADDING CHUNK ==============")
-	log.Printf("[ChunkServer %d] Chunk added: {%v %d %s}\n", cs.portNum, args.ChunkHandle, args.ChunkIndex, helper.TruncateOutput(args.Data))
-	cs.storage = append(cs.storage, args)
-	index := len(cs.storage)
+	log.Printf("[ChunkServer %d] Chunk added: {%v %d %s}\n", cs.PortNum, args.ChunkHandle, args.ChunkIndex, helper.TruncateOutput(args.Data))
+	cs.Storage = append(cs.Storage, args)
+	index := len(cs.Storage)
 
 	*reply = models.SuccessJSON{
 		FileID:    args.ChunkHandle,
@@ -61,10 +63,10 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 	var successResponse models.SuccessJSON
 
 	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
-	logMessage := fmt.Sprintf("[ChunkServer %d] Chunks added: ", cs.portNum)
+	logMessage := fmt.Sprintf("[ChunkServer %d] Chunks added: ", cs.PortNum)
 
 	for _, c := range args {
-		cs.storage = append(cs.storage, c)
+		cs.Storage = append(cs.Storage, c)
 
 		newChunk := models.Chunk{
 			ChunkHandle: c.ChunkHandle,
@@ -73,28 +75,28 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 		}
 
 		replicateChunk := models.Replication{
-			Port:  cs.portNum,
+			Port:  cs.PortNum,
 			Chunk: newChunk,
 		}
 
 		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 		if err != nil {
-			log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.portNum, err)
+			log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.PortNum, err)
 		}
 
 		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
 		if err != nil {
-			log.Printf("[ChunkServer %d Replication] Error calling RPC method: %v\n", cs.portNum, err)
+			log.Printf("[ChunkServer %d Replication] Error calling RPC method: %v\n", cs.PortNum, err)
 		}
 		client.Close()
 
-		log.Printf("[ChunkServer %d] Successful Replication: %v\n", cs.portNum, successResponse)
+		log.Printf("[ChunkServer %d] Successful Replication: %v\n", cs.PortNum, successResponse)
 
 		logMessage += fmt.Sprintf("\n{%v %d %s}", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
 	}
 	log.Println(logMessage)
 
-	index := len(cs.storage)
+	index := len(cs.Storage)
 
 	*reply = models.SuccessJSON{
 		FileID:    args[0].ChunkHandle,
@@ -106,10 +108,10 @@ func (cs *ChunkServer) CreateFileChunks(args []models.Chunk, reply *models.Succe
 // update value of chunk in storage
 func (cs *ChunkServer) UpdateChunk(args models.Chunk, reply *models.Chunk) error {
 	var updatedChunk models.Chunk
-	for idx, val := range cs.storage {
+	for idx, val := range cs.Storage {
 		if val.ChunkHandle == args.ChunkHandle {
-			cs.storage[idx] = args
-			updatedChunk = cs.storage[idx]
+			cs.Storage[idx] = args
+			updatedChunk = cs.Storage[idx]
 			break
 		}
 	}
@@ -120,14 +122,46 @@ func (cs *ChunkServer) UpdateChunk(args models.Chunk, reply *models.Chunk) error
 // delete chunk from storage
 func (cs *ChunkServer) DeleteChunk(args models.Chunk, reply *models.Chunk) error {
 	var deletedChunk models.Chunk
-	for idx, val := range cs.storage {
+	for idx, val := range cs.Storage {
 		if val.ChunkHandle == args.ChunkHandle {
-			cs.storage = append(cs.storage[:idx], cs.storage[:idx+1]...)
+			cs.Storage = append(cs.Storage[:idx], cs.Storage[:idx+1]...)
 			deletedChunk = args
 			break
 		}
 	}
 	*reply = deletedChunk
+	return nil
+}
+
+/* ============================ Lease functions ============================ */
+// if chunk server selected as primary replica, get lease from master
+// returns its own port number
+func (cs *ChunkServer) GetLease(args models.Lease, reply *int) error {
+	cs.Lease = models.Lease{
+		Owner:      args.Owner,
+		Expiration: args.Expiration,
+		IsExpired:  args.IsExpired,
+	}
+	cs.LeaseExpiryChan = make(chan bool, 1)
+	*reply = cs.PortNum
+	return nil
+}
+
+// master to call this when it master receives heartbeat from chunk server
+// something like ACK for refreshLease called within SendHeartBeat
+func (cs *ChunkServer) RefreshLease(args models.Lease, reply *int) error {
+	// update new expiration time
+	cs.Lease.Expiration = args.Expiration
+	cs.Lease.IsExpired = false
+	*reply = cs.PortNum
+	return nil
+}
+
+// master calls this to revoke lease
+func (cs *ChunkServer) RevokeLease(args int, reply *int) error {
+	log.Printf("[ChunkServer %d] Lease as primary replica revoked\n", cs.PortNum)
+	cs.Lease.IsExpired = true
+	*reply = cs.PortNum
 	return nil
 }
 
@@ -139,7 +173,12 @@ func (cs *ChunkServer) SendHeartBeat(args models.ChunkServerState, reply *models
 		LastHeartbeat: time.Now(),
 		Status:        args.Status,
 		Node:          helper.CHUNK_SERVER_START_PORT,
-		Port:          cs.portNum,
+		Port:          cs.PortNum,
+	}
+	if !cs.Lease.IsExpired {
+		heartBeat.IsPrimaryReplica = true
+	} else {
+		heartBeat.IsPrimaryReplica = false
 	}
 	*reply = heartBeat
 	return nil
@@ -152,13 +191,13 @@ func (cs *ChunkServer) ReadRange(args models.ReadData, reply *[]byte) error {
 	chunkUUID := args.ChunkMetadata.Handle
 
 	if args.ChunkIndex1 == args.ChunkIndex2 {
-		for _, chunk := range cs.storage {
+		for _, chunk := range cs.Storage {
 			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex == args.ChunkIndex1 {
 				dataStream = append(dataStream, chunk.Data...)
 			}
 		}
 	} else {
-		for _, chunk := range cs.storage {
+		for _, chunk := range cs.Storage {
 			if chunk.ChunkHandle == chunkUUID && chunk.ChunkIndex >= args.ChunkIndex1 && chunk.ChunkIndex <= args.ChunkIndex2 {
 				dataStream = append(dataStream, chunk.Data...)
 			}
@@ -197,21 +236,21 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 				args.Data = args.Data[chunkSpace:]
 			}
 
-			replicateChunk := models.Replication{Port: cs.portNum, Chunk: chunk}
+			replicateChunk := models.Replication{Port: cs.PortNum, Chunk: chunk}
 
 			// Updates Master for new last index entry
 			client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 			if err != nil {
-				log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.portNum, err)
+				log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.PortNum, err)
 			}
 
 			err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
 			if err != nil {
-				log.Printf("[ChunkServer %d] Error calling RPC method: %v\n", cs.portNum, err)
+				log.Printf("[ChunkServer %d] Error calling RPC method: %v\n", cs.PortNum, err)
 			}
 			client.Close()
 
-			log.Printf("[ChunkServer %d] Successful Replication: %v\n", cs.portNum, successResponse)
+			log.Printf("[ChunkServer %d] Successful Replication: %v\n", cs.PortNum, successResponse)
 		}
 	}
 
@@ -219,15 +258,10 @@ func (cs *ChunkServer) Append(args models.AppendData, reply *models.Chunk) error
 	return nil
 }
 
-func (cs *ChunkServer) Replication() error {
-
-	return nil
-}
-
 func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
-	cs.killed = true
+	cs.Killed = true
 	*reply = models.AckSigKill{Ack: true}
-	log.Printf("[ChunkServer %d] Received kill signal\n", cs.portNum)
+	log.Printf("[ChunkServer %d] Received kill signal\n", cs.PortNum)
 	return nil
 }
 
@@ -235,8 +269,8 @@ func (cs *ChunkServer) Kill(args int, reply *models.AckSigKill) error {
 func RunChunkServer(portNumber int) {
 	// initialize chunk server instance
 	chunkServerInstance := &ChunkServer{
-		storage: make([]models.Chunk, 0),
-		portNum: portNumber,
+		Storage: make([]models.Chunk, 0),
+		PortNum: portNumber,
 	}
 	err := rpc.RegisterName(fmt.Sprintf("%d", portNumber), chunkServerInstance)
 	if err != nil {
@@ -257,7 +291,7 @@ func RunChunkServer(portNumber int) {
 	log.Printf("[ChunkServer %d] RPC listening on port %d\n", portNumber, portNumber)
 
 	for {
-		if chunkServerInstance.killed {
+		if chunkServerInstance.Killed {
 			return
 		}
 		conn, err := listener.Accept()
@@ -267,6 +301,15 @@ func RunChunkServer(portNumber int) {
 		// serve incoming RPC requests
 		go rpc.ServeConn(conn)
 	}
+}
+
+func (cs *ChunkServer) dial(port int) *rpc.Client {
+	client, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(port))
+	if err != nil {
+		log.Printf("[Client %d] Error connecting to RPC server: %v", cs.PortNum, err)
+		return nil
+	}
+	return client
 }
 
 func (cs *ChunkServer) InitialiseChunks() {
@@ -294,7 +337,7 @@ func (cs *ChunkServer) InitialiseChunks() {
 		Data:        []byte("Bar"),
 	}
 
-	cs.storage = append(cs.storage, chunk1, chunk2, chunk3, chunk4)
+	cs.Storage = append(cs.Storage, chunk1, chunk2, chunk3, chunk4)
 }
 
 func (cs *ChunkServer) Registration(portNum int) {
@@ -302,15 +345,15 @@ func (cs *ChunkServer) Registration(portNum int) {
 
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
-		log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.portNum, err)
+		log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.PortNum, err)
 	}
 
 	err = client.Call("MasterNode.RegisterChunkServers", portNum, &response)
 	if err != nil {
-		log.Printf("[ChunkServer %d Registration] Error calling RPC method: %v\n", cs.portNum, err)
+		log.Printf("[ChunkServer %d Registration] Error calling RPC method: %v\n", cs.PortNum, err)
 	}
 	client.Close()
 
-	log.Printf("[ChunkServer %d] ChunkServer on port: %d. Registration Response %s\n", cs.portNum, portNum, response)
+	log.Printf("[ChunkServer %d] ChunkServer on port: %d. Registration Response %s\n", cs.PortNum, portNum, response)
 
 }

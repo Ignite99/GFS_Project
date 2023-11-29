@@ -24,10 +24,11 @@ type MetadataResponse struct {
 }
 
 type ChunkServerState struct {
-	LastHeartbeat time.Time
-	Status        string
-	Node          int
-	Port          int
+	LastHeartbeat    time.Time
+	Status           string
+	Node             int
+	Port             int
+	IsPrimaryReplica bool
 }
 
 /* =========== CreateFile ===========*/
@@ -78,15 +79,16 @@ type ReplicationResponse struct {
 /* =========== Replication & Append ===========*/
 
 /* =========== Leases ===========*/
+const LeaseDuration = time.Second * 5 // in seconds
+
 type Lease struct {
-	FileID     string
-	Owner      int
+	Owner      int // port number of chunk server
 	Expiration time.Time
 	IsExpired  bool
 }
 
 type LeaseData struct {
-	FileID   string // can be any file identifier by right
-	Owner    int
-	Duration time.Duration
+	ChunkHandle uuid.UUID
+	Owner       int
+	Duration    time.Duration
 }
