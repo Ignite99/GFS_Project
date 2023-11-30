@@ -6,14 +6,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/client"
+	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
 )
 
 // ** Master Functions **
 
-func Test_CreateFile(t *testing.T){
+func Test_CreateFile(t *testing.T) {
 	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	defer logfile.Close()
 	log.SetOutput(logfile)
@@ -45,7 +45,6 @@ func Test_CreateFile(t *testing.T){
 	client.Close()
 	log.Printf("[Master: CreateFile] Metadata of file created is received: %v\n", metadata)
 }
-
 
 // Testing get chunk location request
 func Test_GetChunkLocation(t *testing.T) {
@@ -82,15 +81,15 @@ func Test_Replication(t *testing.T) {
 	log.SetOutput(logfile)
 
 	var successResponse models.SuccessJSON
-	
-	newChunk := models.Chunk {
-		ChunkHandle: 	helper.StringToUUID("9e614b18-34f5-4773-86dc-21f920031c64"),
-		ChunkIndex: 	25,
-		Data:			[]byte("Morning"),
+
+	newChunk := models.Chunk{
+		ChunkHandle: helper.StringToUUID("9e614b18-34f5-4773-86dc-21f920031c64"),
+		ChunkIndex:  25,
+		Data:        []byte("Morning"),
 	}
 
 	replicateChunk := models.Replication{
-		Port: 8091,
+		Port:  8091,
 		Chunk: newChunk,
 	}
 
@@ -127,4 +126,3 @@ func Test_Append(t *testing.T) {
 	client.Close()
 	log.Printf("[Master: Append] Metadata of file to append is received: %v\n", appendReply)
 }
-

@@ -29,11 +29,11 @@ func TestRead(t *testing.T) {
 
 // Test Reading File from another chunk server
 // Need to hardcode a chunk server to read from, but how?
-func TestReadReplica(t *testing.T) {
-	fmt.Printf("Running Read Test..")
-	newClient := client.Client{ID: 99, OwnsLease: false, LeaseExpiryChan: make(chan bool, 1), RequestDone: make(chan bool, 1)}
+// func TestReadReplica(t *testing.T) {
+// 	fmt.Printf("Running Read Test..")
+// 	newClient := client.Client{ID: 99, OwnsLease: false, LeaseExpiryChan: make(chan bool, 1), RequestDone: make(chan bool, 1)}
 
-}
+// }
 
 // Test Appending Content
 func TestAppend(t *testing.T) {
