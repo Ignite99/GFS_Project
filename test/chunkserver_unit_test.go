@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"testing"
 	"time"
+	"os"
 
 	//"os"
 	"strconv"
@@ -19,6 +20,10 @@ import (
 
 // Test Chunk Storage functions
 func TestGetChunk(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	var chunkRetrieved models.Chunk
 	portNumber := 9000
 	chunkServerInstance := &chunkserver.ChunkServer{
@@ -34,11 +39,15 @@ func TestGetChunk(t *testing.T) {
 			break
 		}
 	}
-	fmt.Println("Chunk Retrieved", chunkRetrieved)
+	log.Printf("[Chunkserver %d: GetChunk] Chunk Retrieved: %v\n", portNumber, chunkRetrieved)
 
 }
 
 func TestAddChunk(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	var chunkAdded models.Chunk
 	portNumber := 9000
 	chunkServerInstance := &chunkserver.ChunkServer{
@@ -46,8 +55,8 @@ func TestAddChunk(t *testing.T) {
 		PortNum: portNumber,
 	}
 	chunkHandle := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
-	log.Println("============== ADDING CHUNK ==============")
-	log.Printf("[ChunkServer %d] Chunk added: {%v %d %s}\n", chunkServerInstance.PortNum, chunkHandle, 1, helper.TruncateOutput(chunkAdded.Data))
+	log.Printf("[ChunkServer %d: AddChunk] ============== ADDING CHUNK ==============\n", portNumber)
+	log.Printf("[ChunkServer %d: AddChunk] Chunk added: {%v %d %s}\n", chunkServerInstance.PortNum, chunkHandle, 1, helper.TruncateOutput(chunkAdded.Data))
 	chunkServerInstance.Storage = append(chunkServerInstance.Storage, chunkAdded)
 	index := len(chunkServerInstance.Storage)
 
@@ -56,11 +65,15 @@ func TestAddChunk(t *testing.T) {
 		LastIndex: index,
 	}
 
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: AddChunk] Reply: %v\n", chunkServerInstance.PortNum, reply)
 
 }
 
 func TestUpdateChunk(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	var chunk models.Chunk
 	portNumber := 9000
 	chunkServerInstance := &chunkserver.ChunkServer{
@@ -76,11 +89,15 @@ func TestUpdateChunk(t *testing.T) {
 		}
 	}
 	reply := updatedChunk
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: UpdateChunk] Reply: %v\n", chunkServerInstance.PortNum, reply)
 
 }
 
 func TestDeleteChunk(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	var chunk models.Chunk
 	portNumber := 9000
 	chunkServerInstance := &chunkserver.ChunkServer{
@@ -96,10 +113,14 @@ func TestDeleteChunk(t *testing.T) {
 		}
 	}
 	reply := deletedChunk
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: DeleteChunk] Reply: %v\n", chunkServerInstance.PortNum, reply)
 
 }
 func Test_CreateFileChunks(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	var successResponse models.SuccessJSON
 	var chunk1 models.Chunk
 	var chunk2 models.Chunk
@@ -111,7 +132,7 @@ func Test_CreateFileChunks(t *testing.T) {
 	}
 
 	log.Println("============== CREATE CHUNKS IN CHUNK SERVER ==============")
-	logMessage := fmt.Sprintf("[ChunkServer %d] Chunks added: ", cs.PortNum)
+	logMessage := fmt.Sprintf("[ChunkServer %d: CreateFileChunks] Chunks added: ", cs.PortNum)
 
 	for _, c := range args {
 		cs.Storage = append(cs.Storage, c)
@@ -129,20 +150,20 @@ func Test_CreateFileChunks(t *testing.T) {
 
 		client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 		if err != nil {
-			log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.PortNum, err)
+			log.Printf("[ChunkServer %d: CreateFileChunks] Dialing error: %v\n", cs.PortNum, err)
 		}
 
 		err = client.Call("MasterNode.Replication", replicateChunk, &successResponse)
 		if err != nil {
-			log.Printf("[ChunkServer %d Replication] Error calling RPC method: %v\n", cs.PortNum, err)
+			log.Printf("[ChunkServer %d: CreateFileChunks] Error calling RPC method: %v\n", cs.PortNum, err)
 		}
 		client.Close()
 
-		log.Printf("[ChunkServer %d] Successful Replication: %v\n", cs.PortNum, successResponse)
+		log.Printf("[ChunkServer %d: CreateFileChunks] Successful Replication: %v\n", cs.PortNum, successResponse)
 
 		logMessage += fmt.Sprintf("\n{%v %d %s}", c.ChunkHandle, c.ChunkIndex, helper.TruncateOutput(c.Data))
 	}
-	log.Println(logMessage)
+	log.Printf("[ChunkServer %d: CreateFileChunks] Chunks: %s\n", cs.PortNum, logMessage)
 
 	index := len(cs.Storage)
 
@@ -150,12 +171,16 @@ func Test_CreateFileChunks(t *testing.T) {
 		FileID:    args[0].ChunkHandle,
 		LastIndex: index,
 	}
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: CreateFileChunks] Reply: %v\n", cs.PortNum, reply)
 
 }
 
 // Test Lease Functions
 func TestGetLease(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
 		Storage: make([]models.Chunk, 0),
@@ -168,10 +193,14 @@ func TestGetLease(t *testing.T) {
 	}
 	cs.LeaseExpiryChan = make(chan bool, 1)
 	reply := cs.PortNum
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: GetLease] Reply: %v\n", cs.PortNum, reply)
 }
 
 func TestRefreshLease(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
 		Storage: make([]models.Chunk, 0),
@@ -180,10 +209,14 @@ func TestRefreshLease(t *testing.T) {
 	cs.Lease.Expiration = time.Time{}
 	cs.Lease.IsExpired = false
 	reply := cs.PortNum
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: RefreshLease] Reply: %v\n", cs.PortNum, reply)
 }
 
 func TestRevokeLease(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
 		Storage: make([]models.Chunk, 0),
@@ -192,11 +225,15 @@ func TestRevokeLease(t *testing.T) {
 	log.Printf("[ChunkServer %d] Lease as primary replica revoked\n", cs.PortNum)
 	cs.Lease.IsExpired = true
 	reply := cs.PortNum
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: RevokeLease] Reply: %v\n", cs.PortNum, reply)
 }
 
 // Test ChunkServer Functions
 func TestSendHeartbeat(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
 		Storage: make([]models.Chunk, 0),
@@ -214,10 +251,14 @@ func TestSendHeartbeat(t *testing.T) {
 		heartBeat.IsPrimaryReplica = false
 	}
 	reply := heartBeat
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: SendHeartbeat] Reply: %v\n", cs.PortNum, reply)
 }
 
 func TestReadRange(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
 		Storage: make([]models.Chunk, 0),
@@ -244,16 +285,21 @@ func TestReadRange(t *testing.T) {
 	}
 
 	reply := dataStream
-	fmt.Println(reply)
+	log.Printf("[ChunkServer %d: ReadRange] Reply: %v\n", cs.PortNum, reply)
 }
 
 func TestInitialiseChunks(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
 		Storage: make([]models.Chunk, 0),
 		PortNum: portNumber,
 	}
 	logx.Logf("Initialised chunkServer Data", logx.FGBLUE, logx.BGWHITE)
+	log.Printf("[Chunkserver %d: InitialiseChunks] Initialised Chunkserver data", portNumber)
 	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
 
 	chunk1 := models.Chunk{
@@ -278,10 +324,14 @@ func TestInitialiseChunks(t *testing.T) {
 	}
 
 	cs.Storage = append(cs.Storage, chunk1, chunk2, chunk3, chunk4)
-	fmt.Println(cs.Storage)
+	log.Printf("[ChunkServer %d: InitialiseChunks] Stored data: %v\n", cs.PortNum, cs.Storage)
 }
 
 func TestRegistration(t *testing.T) {
+	logfile, _ := os.OpenFile("../logs/testing.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	defer logfile.Close()
+	log.SetOutput(logfile)
+
 	var response string
 	portNumber := 9000
 	cs := &chunkserver.ChunkServer{
@@ -291,15 +341,15 @@ func TestRegistration(t *testing.T) {
 
 	client, err := rpc.Dial("tcp", ":"+strconv.Itoa(helper.MASTER_SERVER_PORT))
 	if err != nil {
-		log.Printf("[ChunkServer %d] Dialing error: %v\n", cs.PortNum, err)
+		log.Printf("[ChunkServer %d: Registratiion] Dialing error: %v\n", cs.PortNum, err)
 	}
 
 	err = client.Call("MasterNode.RegisterChunkServers", cs.PortNum, &response)
 	if err != nil {
-		log.Printf("[ChunkServer %d Registration] Error calling RPC method: %v\n", cs.PortNum, err)
+		log.Printf("[ChunkServer %d: Registration] Error calling RPC method: %v\n", cs.PortNum, err)
 	}
 	client.Close()
 
-	log.Printf("[ChunkServer %d] ChunkServer on port: %d. Registration Response %s\n", cs.PortNum, cs.PortNum, response)
+	log.Printf("[ChunkServer %d: Registration]Registration Response %s\n", cs.PortNum, response)
 
 }
