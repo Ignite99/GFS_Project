@@ -17,6 +17,10 @@ import (
 	"github.com/theritikchoure/logx"
 )
 
+var (
+	LastPort int
+)
+
 type MasterNode struct {
 	ChunkInfo             map[string]models.ChunkMetadata
 	Chunks                sync.Map
@@ -115,16 +119,26 @@ func HeartBeatManager(mn *MasterNode, port int) models.ChunkServerState {
 // Will iterate through all chunk servers initialised and ping server with heartbeatManager
 func HeartBeatTracker(mn *MasterNode) {
 	for {
+		allDead := true
+
 		for _, port := range helper.ChunkServerPorts {
 			output := HeartBeatManager(mn, port)
 			if output.Status != "alive" {
 				helper.AckMap.Store(port, "dead")
 
 				log.Printf("[Master] Chunk Server at port %d is dead\n", port)
+			} else {
+				allDead = false
 			}
 		}
 
-		time.Sleep(2 * time.Second)
+		if allDead {
+			log.Println("[Master] All Chunk Servers are dead. Generating new chunk server...")
+			go chunkserver.RunChunkServer(LastPort + 1)
+			LastPort++
+		}
+
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -451,6 +465,8 @@ func main() {
 	for i := 0; i < 3; i++ {
 		go chunkserver.RunChunkServer(8090 + i)
 	}
+
+	LastPort = 8092
 
 	for {
 		conn, err := listener.Accept()
