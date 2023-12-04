@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	LastPort int
+	LastPort         int
+	firstTimeStepBro int
 )
 
 type MasterNode struct {
@@ -120,6 +121,10 @@ func HeartBeatManager(mn *MasterNode, port int) models.ChunkServerState {
 // Will iterate through all chunk servers initialised and ping server with heartbeatManager
 func HeartBeatTracker(mn *MasterNode) {
 	for {
+		if firstTimeStepBro == 0 {
+			time.Sleep(3 * time.Second)
+		}
+
 		allDead := true
 
 		for _, port := range helper.ChunkServerPorts {
@@ -138,6 +143,8 @@ func HeartBeatTracker(mn *MasterNode) {
 			go chunkserver.RunChunkServer(LastPort + 1)
 			LastPort++
 		}
+
+		firstTimeStepBro = 1
 
 		time.Sleep(5 * time.Second)
 	}
@@ -444,6 +451,8 @@ func main() {
 	}
 	defer logfile.Close()
 	log.SetOutput(logfile)
+
+	firstTimeStepBro = 0
 
 	gfsMasterNode := &MasterNode{
 		ChunkInfo: make(map[string]models.ChunkMetadata),
