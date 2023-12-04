@@ -12,7 +12,7 @@ type ChunkLocationArgs struct {
 }
 
 type ChunkMetadata struct {
-	Handle    uuid.UUID
+	Handle    []uuid.UUID
 	Location  []int
 	LastIndex int
 }
