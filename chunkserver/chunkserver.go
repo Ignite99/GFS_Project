@@ -315,6 +315,9 @@ func (cs *ChunkServer) dial(port int) *rpc.Client {
 func (cs *ChunkServer) InitialiseChunks() {
 	logx.Logf("Initialised chunkServer Data", logx.FGBLUE, logx.BGWHITE)
 	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	uuid2 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d3")
+	uuid3 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d2")
+	uuid4 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d1")
 
 	chunk1 := models.Chunk{
 		ChunkHandle: uuid1,
@@ -322,17 +325,17 @@ func (cs *ChunkServer) InitialiseChunks() {
 		Data:        []byte("Hello"),
 	}
 	chunk2 := models.Chunk{
-		ChunkHandle: uuid1,
+		ChunkHandle: uuid2,
 		ChunkIndex:  1,
 		Data:        []byte("World"),
 	}
 	chunk3 := models.Chunk{
-		ChunkHandle: uuid1,
+		ChunkHandle: uuid3,
 		ChunkIndex:  2,
 		Data:        []byte("Foo"),
 	}
 	chunk4 := models.Chunk{
-		ChunkHandle: uuid1,
+		ChunkHandle: uuid4,
 		ChunkIndex:  3,
 		Data:        []byte("Bar"),
 	}

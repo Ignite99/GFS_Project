@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	LastPort int
+	LastPort         int
+	firstTimeStepBro int
 )
 
 type MasterNode struct {
@@ -60,7 +61,8 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 		return helper.ErrChunkNotFound
 	}
 
-	chunkHandle := chunkMetadata.Handle
+	chunkHandle := chunkMetadata.Handle[args.ChunkIndex-1]
+
 	value, exists := mn.PrimaryReplicaMapping.Load(chunkHandle)
 	if exists {
 		if primaryReplicaVal, ok := value.(int); ok {
@@ -74,7 +76,7 @@ func (mn *MasterNode) GetChunkLocation(args models.ChunkLocationArgs, reply *mod
 	}
 
 	response := models.MetadataResponse{
-		Handle:    chunkMetadata.Handle,
+		Handle:    chunkMetadata.Handle[args.ChunkIndex-1],
 		Location:  PrimaryReplicaPort,
 		LastIndex: chunkMetadata.LastIndex,
 	}
@@ -119,6 +121,10 @@ func HeartBeatManager(mn *MasterNode, port int) models.ChunkServerState {
 // Will iterate through all chunk servers initialised and ping server with heartbeatManager
 func HeartBeatTracker(mn *MasterNode) {
 	for {
+		if firstTimeStepBro == 0 {
+			time.Sleep(3 * time.Second)
+		}
+
 		allDead := true
 
 		for _, port := range helper.ChunkServerPorts {
@@ -137,6 +143,8 @@ func HeartBeatTracker(mn *MasterNode) {
 			go chunkserver.RunChunkServer(LastPort + 1)
 			LastPort++
 		}
+
+		firstTimeStepBro = 1
 
 		time.Sleep(5 * time.Second)
 	}
@@ -190,7 +198,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 				client.Close()
 
 				response = models.ChunkMetadata{
-					Handle:    output.FileID,
+					Handle:    []uuid.UUID{output.FileID},
 					LastIndex: output.LastIndex,
 				}
 			}
@@ -201,7 +209,7 @@ func (mn *MasterNode) Replication(args models.Replication, reply *models.Success
 
 	mn.Chunks.Range(func(key, value interface{}) bool {
 		if metadata, ok := value.(models.ChunkMetadata); ok {
-			if metadata.Handle == args.Chunk.ChunkHandle {
+			if metadata.Handle[len(metadata.Handle)-1] == args.Chunk.ChunkHandle {
 				filename = key.(string)
 				return false
 			}
@@ -242,7 +250,7 @@ func (mn *MasterNode) Append(args models.Append, reply *models.AppendData) error
 	}
 
 	response := models.MetadataResponse{
-		Handle:    chunkMetadata.Handle,
+		Handle:    chunkMetadata.Handle[len(chunkMetadata.Handle)-1],
 		Location:  PrimaryReplica,
 		LastIndex: chunkMetadata.LastIndex,
 	}
@@ -274,7 +282,7 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.MetadataR
 		})
 
 		metadata := models.ChunkMetadata{
-			Handle:    uuidNew,
+			Handle:    []uuid.UUID{uuidNew},
 			Location:  alivePorts,
 			LastIndex: args.NumberOfChunks - 1,
 		}
@@ -444,6 +452,8 @@ func main() {
 	defer logfile.Close()
 	log.SetOutput(logfile)
 
+	firstTimeStepBro = 0
+
 	gfsMasterNode := &MasterNode{
 		ChunkInfo: make(map[string]models.ChunkMetadata),
 	}
@@ -458,8 +468,6 @@ func main() {
 	}
 	defer listener.Close()
 
-	go HeartBeatTracker(gfsMasterNode)
-
 	log.Printf("[Master] RPC server is listening on port %d\n", helper.MASTER_SERVER_PORT)
 
 	for i := 0; i < 3; i++ {
@@ -467,6 +475,8 @@ func main() {
 	}
 
 	LastPort = 8092
+
+	go HeartBeatTracker(gfsMasterNode)
 
 	for {
 		conn, err := listener.Accept()
@@ -484,11 +494,14 @@ func main() {
 func (mn *MasterNode) InitializeChunkInfo() {
 
 	uuid1 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d4")
+	uuid2 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d3")
+	uuid3 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d2")
+	uuid4 := helper.StringToUUID("60acd4ca-0ca5-4ba7-b827-dbe81e7529d1")
 
 	// Handle is the uuid of the metadata that has been assigned to the chunk
 	// Location is the chunkServer that it is located in
 	metadata1 := models.ChunkMetadata{
-		Handle:    uuid1,
+		Handle:    []uuid.UUID{uuid1, uuid2, uuid3, uuid4},
 		Location:  []int{8090, 8091, 8092},
 		LastIndex: 3,
 	}
