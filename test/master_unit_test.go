@@ -19,7 +19,7 @@ func Test_CreateFile(t *testing.T) {
 	log.SetOutput(logfile)
 
 	data := []byte("New file!")
-	err := os.WriteFile("testfile2.txt", data, 0644)
+	err := os.WriteFile("testfile.txt", data, 0644)
 	if err != nil {
 		log.Printf("[Master: CreateFile] Error writing to file: %v\n", err)
 	}
@@ -30,7 +30,7 @@ func Test_CreateFile(t *testing.T) {
 		chunks++
 	}
 	createArgs := models.CreateData{
-		Append:         models.Append{Filename: "testfil2.txt", Data: data},
+		Append:         models.Append{Filename: "testfile.txt", Data: data},
 		NumberOfChunks: chunks,
 	}
 
@@ -54,7 +54,7 @@ func Test_GetChunkLocation(t *testing.T) {
 
 	newClient := client.Client{ID: 0, OwnsLease: false, LeaseExpiryChan: make(chan bool, 1), RequestDone: make(chan bool, 1)}
 	data := []byte("New file!")
-	newClient.CreateFile("testfile2.txt", data)
+	newClient.CreateFile("testfile.txt", data)
 	client, err := rpc.Dial("tcp", "localhost:8080") // Replace with your master node's address
 	if err != nil {
 		log.Fatal("[Master: requestChunkLocation] Error connecting to RPC server:", err)
@@ -62,7 +62,7 @@ func Test_GetChunkLocation(t *testing.T) {
 	defer client.Close()
 
 	args := models.ChunkLocationArgs{
-		Filename:   "testfile2.txt",
+		Filename:   "testfile.txt",
 		ChunkIndex: 1,
 	}
 	var reply models.MetadataResponse
