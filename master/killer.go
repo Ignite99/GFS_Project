@@ -11,7 +11,7 @@ import (
 
 // comment out to run this function
 // func main() {
-// 	killer(8091)
+// 	killer(8092)
 // }
 
 // Testing get chunk location request

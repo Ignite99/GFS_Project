@@ -40,7 +40,12 @@ func (mn *MasterNode) findPrimaryReplica(locations []int, chunkHandle uuid.UUID,
 		if portAlive == "alive" {
 			PrimaryReplicaPort = value
 			log.Printf("[Master] Chosen primary replica at chunk server port=%d for chunkHandle {%v}\n", PrimaryReplicaPort, chunkHandle)
-			mn.GrantLease(PrimaryReplicaPort, models.LeaseDuration, filename)
+			res := mn.GrantLease(PrimaryReplicaPort, models.LeaseDuration, filename)
+			if res == -1 {
+				log.Printf("[Master] Chosen primary replica {%d} is dead. Revoke lease and find another one...\n", PrimaryReplicaPort)
+				helper.AckMap.Store(value, "dead")
+				continue // find another primary replica
+			}
 			mn.PrimaryReplicaMapping.Store(chunkHandle, PrimaryReplicaPort)
 			return PrimaryReplicaPort
 		} else {
@@ -303,12 +308,12 @@ func (mn *MasterNode) CreateFile(args models.CreateData, reply *models.MetadataR
 }
 
 /* ============================================ LEASE FUNCTIONS  ===========================================*/
-func (mn *MasterNode) GrantLease(portNum int, duration time.Duration, filename string) {
+func (mn *MasterNode) GrantLease(portNum int, duration time.Duration, filename string) int {
 	// check if lease already exists for the chunk server
 	if _, ok := mn.LeaseMapping.Load(portNum); ok {
 		// lease already exists, no need to grant new lease
 		log.Printf("[Master] Lease already exists for Primary Replica {%d}\n", portNum)
-		return
+		return 0 // no error found
 	}
 	newLease := &models.Lease{
 		Owner:      portNum,
@@ -318,15 +323,23 @@ func (mn *MasterNode) GrantLease(portNum int, duration time.Duration, filename s
 	mn.LeaseMapping.Store(portNum, newLease)
 	log.Printf("[Master] Created lease for Primary Replica {%d}\n", portNum)
 	// grant lease to chunk server serving as new primary replica
-	csClient := mn.dial(portNum)
+	csClient, err := rpc.Dial("tcp", "localhost:"+strconv.Itoa(portNum))
+	if err != nil {
+		log.Printf("[Master] Chunk Server {%d} contacted is already dead: %v", portNum, err)
+		mn.LeaseMapping.Delete(portNum)
+		return -1
+	}
+	// csClient := mn.dial(portNum)
 	var reply int
-	err := csClient.Call(fmt.Sprintf("%d.GetLease", portNum), newLease, &reply)
+	err = csClient.Call(fmt.Sprintf("%d.GetLease", portNum), newLease, &reply)
 	if err != nil {
 		log.Printf("[Master] Error granting lease to Primary Replica {%d}: %v\n", portNum, err)
+		return -1
 	}
 	csClient.Close()
 	// start lease timer
 	go mn.CheckLeaseExpiry(portNum, newLease, filename)
+	return 0 // no error found
 }
 
 func (mn *MasterNode) RenewLease(primaryReplicaPort int) {
