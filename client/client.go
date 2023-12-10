@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/sutd_gfs_project/helper"
 	"github.com/sutd_gfs_project/models"
@@ -86,23 +87,29 @@ func (c *Client) AppendToFile(filename string, data []byte) {
 	appendArgs := models.Append{Filename: filename, Data: data}
 	var appendReply models.AppendData
 
-	mnClient := c.dial(helper.MASTER_SERVER_PORT)
-	err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
-	if err != nil {
-		log.Printf("[Client %d MasterNode Append] Error calling RPC method: %v", c.ID, err)
-	}
-	mnClient.Close()
+	// Retry until successful
+	for {
+		mnClient := c.dial(helper.MASTER_SERVER_PORT)
+		err := mnClient.Call("MasterNode.Append", appendArgs, &appendReply)
+		if err != nil {
+			log.Printf("[Client %d MasterNode Append] Error calling RPC method: %v", c.ID, err)
+		}
 
-	fmt.Println("Masternode Append works")
+		fmt.Println("Masternode Append works")
 
-	// Append data to chunks
-	var reply models.Chunk
-	csClient := c.dial(appendReply.MetadataResponse.Location)
-	err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.MetadataResponse.Location), appendReply, &reply)
-	if err != nil {
-		log.Printf("[Client %d ChunkServer Append] Error calling RPC method: %v\n", c.ID, err)
+		// Append data to chunks
+		var reply models.Chunk
+		csClient := c.dial(appendReply.MetadataResponse.Location)
+		err = csClient.Call(fmt.Sprintf("%d.Append", appendReply.MetadataResponse.Location), appendReply, &reply)
+		if err != nil {
+			log.Printf("[Client %d ChunkServer Append] Error calling RPC method: %v\n", c.ID, err)
+			time.Sleep(time.Second * 2)
+			continue
+		}
+		mnClient.Close()
+		csClient.Close()
+		break
 	}
-	csClient.Close()
 	log.Printf("[Client %d] Successfully appended payload %v\n:", c.ID, helper.TruncateOutput(data))
 
 	// Append data to local copy of file
