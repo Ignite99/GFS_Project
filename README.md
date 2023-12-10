@@ -21,4 +21,6 @@ Next use another terminal to run the client
 ## How to run testing code
 Note: The test code will only run when master node is running. If you dont want to do that then run test.sh in the test folder.
 
-You can download the extension go test explorer to see all the tests avaliable in the test folder. You can also test all each unit testcase one by one.
+You can download the extension go test explorer to see all the tests avaliable in the test folder. You can also test each unit testcase one by one.
+
+Make sure to restart the master server after each test to avoid potential errors.
