@@ -43,6 +43,7 @@ func (mn *MasterNode) findPrimaryReplica(locations []int, chunkHandle uuid.UUID,
 			res := mn.GrantLease(PrimaryReplicaPort, models.LeaseDuration, filename)
 			if res == -1 {
 				log.Printf("[Master] Chosen primary replica {%d} is dead. Revoke lease and find another one...\n", PrimaryReplicaPort)
+				helper.AckMap.Store(value, "dead")
 				continue // find another primary replica
 			}
 			mn.PrimaryReplicaMapping.Store(chunkHandle, PrimaryReplicaPort)
