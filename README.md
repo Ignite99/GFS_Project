@@ -1,4 +1,4 @@
-# 50.041_GFS_Project
+# GFS_Project
 
 ## Done by:
 1005194 Goh Nicholas  
