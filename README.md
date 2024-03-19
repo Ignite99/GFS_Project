@@ -1,11 +1,11 @@
 # GFS_Project
 
 ## Done by:
-1005194 Goh Nicholas  
-1005011 Ho Wei Heng, Jaron  
-1005012 Lawrence Chen Qing Zhao  
-1005149 Nathan Chang  
-1005388 Namitha Justine  
+Goh Nicholas  
+Ho Wei Heng, Jaron  
+Lawrence Chen Qing Zhao  
+Nathan Chang  
+Namitha Justine  
 
 ## How to run GFS code
 Use one terminal to run the master nodes, this will subsequently also run the chunk server nodes
